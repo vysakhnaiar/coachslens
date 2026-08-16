@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coach's Lens - Ultimate Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, doc, getDoc, getDocs, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // --- YOUR CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDIXjcyJUtypEn1IEUDHoS6G6O6y_EikEE",
+            authDomain: "coach-s-lens.firebaseapp.com",
+            projectId: "coach-s-lens",
+            storageBucket: "coach-s-lens.firebasestorage.app",
+            messagingSenderId: "1005983098932",
+            appId: "1:1005983098932:web:0265751d1388357ef6c261",
+            measurementId: "G-BCEBHTX0L6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // --- AUTH UI LOGIC ---
+        window.handleLogin = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPass').value;
+            const btn = document.getElementById('loginSubmitBtn');
+            btn.innerText = "Authenticating...";
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+            } catch (e) {
+                alert("Login Failed: Check Email/Password");
+                btn.innerText = "Login to Dashboard";
+            }
+        };
+
+        window.handleLogout = () => {
+            signOut(auth).then(() => location.reload());
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('id')) return; // Don't show login if it's a player link
+
+            if (user) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('hidden');
+                loadDashboard();
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('app-interface').classList.add('hidden');
+            }
+        });
+
+        // --- DASHBOARD LOGIC ---
+        window.loadDashboard = async () => {
+            const list = document.getElementById('dashList');
+            list.innerHTML = "<p class='p-4 text-[10px] italic text-gray-400'>Syncing Cloud...</p>";
+            const q = query(collection(db, "player_reports"), orderBy("timestamp", "desc"));
+            const snap = await getDocs(q);
+            list.innerHTML = "";
+            snap.forEach((docSnap) => {
+                const data = docSnap.data();
+                const shareURL = window.location.href.split('?')[0] + "?id=" + docSnap.id;
+                list.innerHTML += `
+                    <div class="p-3 border-b hover:bg-slate-50 flex justify-between items-center group">
+                        <div class="cursor-pointer" onclick="window.location.href='${shareURL}'">
+                            <p class="font-bold text-xs text-slate-700">${data.playerName || 'Unnamed'}</p>
+                            <p class="text-[9px] text-gray-400 font-bold uppercase">${data.role || 'Player'}</p>
+                        </div>
+                        <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onclick="navigator.clipboard.writeText('${shareURL}'); alert('Link Copied!')" class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[9px] font-bold uppercase">Link</button>
+                            <button onclick="deleteR('${docSnap.id}')" class="bg-red-100 text-red-700 px-2 py-1 rounded text-[9px] font-bold uppercase">Del</button>
+                        </div>
+                    </div>`;
+            });
+        };
+
+        window.deleteR = async (id) => { if(confirm("Permanently delete this report?")) { await deleteDoc(doc(db, "player_reports", id)); loadDashboard(); } };
+
+        // --- DATA LOGIC ---
+        window.saveToCloud = async () => {
+            const btn = document.getElementById('saveBtn');
+            btn.innerText = "SAVING...";
+            const technicalData = {};
+            document.querySelectorAll('select, input, textarea').forEach(el => { if(el.id) technicalData[el.id] = el.value; });
+
+            try {
+                await addDoc(collection(db, "player_reports"), { ...technicalData, timestamp: new Date() });
+                alert("Pro Analysis Saved Successfully!");
+                btn.innerText = "SAVE PLAYER";
+                loadDashboard();
+            } catch (e) { alert("Error saving to Cloud"); btn.innerText = "SAVE PLAYER"; }
+        };
+
+        window.onload = async () => {
+            const params = new URLSearchParams(window.location.search);
+            const reportId = params.get('id');
+            if (reportId) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('hidden');
+                document.getElementById('dashSide').classList.add('hidden');
+                document.getElementById('coachHeaderControls').classList.add('hidden');
+                
+                const snap = await getDoc(doc(db, "player_reports", reportId));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    Object.keys(data).forEach(key => {
+                        const el = document.getElementById(key);
+                        if(el) { el.value = data[key]; el.disabled = true; el.style.background = "#f1f5f9"; }
+                    });
+                    updateUI();
+                }
+            }
+        };
+    </script>
+
+    <style>
+        .section-hidden { display: none; }
+        .ideal { color: #10b981; font-weight: bold; }
+        .form-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 1.5rem; margin-bottom: 1.5rem; }
+        label { font-weight: 800; color: #64748b; font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem; display: block; }
+        select, input, textarea { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.85rem; width: 100%; background: #fff; }
+        .pro-tag { background: #0f172a; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; margin-bottom: 10px; display: inline-block; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-slate-900 p-4 hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border-t-8 border-emerald-500">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-black italic tracking-tighter text-slate-900">COACH'S LENS</h1>
+                <p class="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">Admin Dashboard Access</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label>Coach Email</label>
+                    <input type="email" id="loginEmail" required class="bg-slate-50 border-slate-200">
+                </div>
+                <div>
+                    <label>Password</label>
+                    <input type="password" id="loginPass" required class="bg-slate-50 border-slate-200">
+                </div>
+                <button type="submit" id="loginSubmitBtn" class="w-full bg-emerald-600 text-white font-black py-3 rounded-lg hover:bg-emerald-700 transition uppercase tracking-widest text-sm">Login to Dashboard</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP INTERFACE -->
+    <div id="app-interface" class="hidden">
+        <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-xl no-print">
+            <div class="flex items-center gap-2">
+                <div class="bg-emerald-500 text-slate-900 font-black p-1 rounded text-xs">CL</div>
+                <h1 class="text-xl font-black italic tracking-tighter text-emerald-400">COACH'S LENS</h1>
+            </div>
+            <div id="coachHeaderControls" class="flex gap-4 items-center">
+                <button id="saveBtn" onclick="saveToCloud()" class="bg-emerald-600 px-6 py-2 rounded-md font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-emerald-500">Save Player</button>
+                <button onclick="handleLogout()" class="text-[10px] font-bold text-slate-400 hover:text-white underline">Logout</button>
+            </div>
+        </nav>
+
+        <div class="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8 p-6">
+            
+            <!-- DASHBOARD SIDEBAR -->
+            <aside id="dashSide" class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-lg border border-slate-200 sticky top-24 overflow-hidden">
+                    <div class="bg-slate-800 text-white p-3 text-[10px] font-black uppercase tracking-widest text-center">Cloud Database</div>
+                    <div id="dashList" class="max-h-[700px] overflow-y-auto"></div>
+                </div>
+            </aside>
+
+            <!-- MAIN FORM -->
+            <main id="report-content" class="lg:col-span-3">
+                <!-- PLAYER PROFILE -->
+                <div class="form-card border-t-4 border-emerald-500">
+                    <span class="pro-tag">Sheet 1: Core Profile</span>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div><label>Player Name</label><input type="text" id="playerName" placeholder="Full Name"></div>
+                        <div><label>Age</label><input type="number" id="age"></div>
+                        <div><label>Proficiency</label><select id="role" onchange="updateUI()"><option value="Batter">Batter</option><option value="Bowler">Bowler</option><option value="All rounder">All rounder</option><option value="WK batter">WK batter</option></select></div>
+                        <div><label>Handedness</label><select id="hand"><option>RH</option><option>LH</option></select></div>
+                    </div>
+                </div>
+
+                <!-- BATTING PRO CHECKLIST -->
+                <div id="sec-bat" class="space-y-4">
+                    <div class="form-card border-t-4 border-blue-600">
+                        <span class="pro-tag !bg-blue-600">Sheet 2: Grip & Setup</span>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div><label>Handle Position</label><select id="b_h"><option class="ideal">Ideal (Middle-MH)</option><option>Top(TH)</option><option>Bottom(BH)</option></select></div>
+                            <div><label>Top Hand V</label><select id="b_tv"><option class="ideal">Ideal (Splice-SP)</option><option>Outer Edge(BSO)</option><option>Inner Edge(BSI)</option></select></div>
+                            <div><label>Bottom Hand V</label><select id="b_bv"><option class="ideal">Ideal (Splice-SP)</option><option>Outer Edge(BSO)</option><option>Inner Edge(BSI)</option></select></div>
+                            <div><label>Guard</label><select id="b_g"><option class="ideal">Middle Stump(MS)</option><option>Leg Stump(LS)</option><option>Off Stump(OS)</option></select></div>
+                            <div><label>Width</label><select id="b_w"><option class="ideal">Shoulder Width(SW)</option><option>Narrow(NW)</option><option>Wide(WD)</option></select></div>
+                            <div><label>Weight Dist.</label><select id="b_wt"><option class="ideal">Balanced(WEB)</option><option>Back Foot(WBF)</option><option>Front Foot(WFF)</option></select></div>
+                            <div><label>Head/Eyes</label><select id="b_he"><option class="ideal">Steady & Level(HS)</option><option>Two Eyed(2E)</option></select></div>
+                            <div><label>Knees</label><select id="b_kn"><option class="ideal">Flexed(SLF)</option><option>Straight(ST)</option></select></div>
+                        </div>
+                    </div>
+
+                    <div class="form-card border-t-4 border-blue-400">
+                        <span class="pro-tag !bg-blue-400">Sheet 3: Backlift & Trigger</span>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div><label>Path</label><select id="b_bp"><option class="ideal">Straight(ST)</option><option>1st/2nd Slip(FSS)</option><option>Gully(GU)</option></select></div>
+                            <div><label>Initiation</label><select id="b_bi"><option class="ideal">Top Hand(THC)</option><option>Bottom Hand(BTH)</option></select></div>
+                            <div><label>Trigger Timing</label><select id="b_tt"><option class="ideal">On Time(OT)</option><option>Early(EY)</option><option>Late(LT)</option></select></div>
+                            <div><label>Trigger Pattern</label><select id="b_tp"><option class="ideal">Minimal(M)</option><option>Excessive(E)</option></select></div>
+                            <div><label>FF Stroke</label><select id="b_ff"><option class="ideal">Along line(BAL)</option><option>Away from line(A)</option></select></div>
+                            <div><label>BF Placement</label><select id="b_bf"><option class="ideal">Deep in Crease(DC)</option><option>Across(A)</option></select></div>
+                            <div class="md:col-span-2"><label>OnForm Link</label><input type="text" id="b_lnk" placeholder="Paste Analysis Video Link"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOWLING -->
+                <div id="sec-bowl" class="form-card border-t-4 border-red-600 section-hidden">
+                    <span class="pro-tag !bg-red-600">Video Analysis: Bowling</span>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div><label>Run Up</label><select id="bo_ru"><option class="ideal">Ideal (Straight)</option><option>Curved</option></select></div>
+                        <div><label>Loading</label><select id="bo_lo"><option class="ideal">Ideal (Close)</option><option>Away</option></select></div>
+                        <div><label>Elbow</label><select id="bo_el"><option class="ideal">Ideal (Target)</option><option>Mid-wicket</option></select></div>
+                        <div><label>Release</label><select id="bo_re"><option class="ideal">Ideal (Vertical)</option><option>Round Arm</option></select></div>
+                    </div>
+                </div>
+
+                <!-- WK -->
+                <div id="sec-wk" class="form-card border-t-4 border-orange-500 section-hidden">
+                    <span class="pro-tag !bg-orange-600">Video Analysis: Wicket Keeping</span>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div><label>Crouch</label><select id="wk_cr"><option class="ideal">Ideal (Balanced)</option><option>Feet wide</option></select></div>
+                        <div><label>Spinners Position</label><select id="wk_sp"><option class="ideal">Ideal (K-shape)</option><option>Curve</option></select></div>
+                        <div><label>Glove Work</label><select id="wk_gw"><option class="ideal">Ideal (Soft)</option><option>Hard Hands</option></select></div>
+                    </div>
+                </div>
+
+                <!-- THROWING -->
+                <div class="form-card border-t-4 border-purple-600">
+                    <span class="pro-tag !bg-purple-600">Throwing & Fielding</span>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div><label>Non-Throw Hand</label><select id="th_nt"><option class="ideal">Ideal (Steady)</option><option>Drop</option></select></div>
+                        <div><label>Elbow Level</label><select id="th_el"><option class="ideal">Ideal (Shoulder)</option><option>Below</option></select></div>
+                        <div><label>Stride</label><select id="th_st"><option class="ideal">Ideal (Normal)</option><option>Short</option></select></div>
+                        <div><label>Alignment</label><select id="th_al"><option class="ideal">Ideal (Target)</option><option>Open</option></select></div>
+                    </div>
+                </div>
+
+                <!-- SUMMARY -->
+                <div class="form-card bg-slate-900 text-white shadow-2xl">
+                    <h3 class="text-emerald-400 font-black mb-4 uppercase tracking-widest text-xs">Coach Summary & Priority Actions</h3>
+                    <textarea id="summary" class="text-slate-900 h-40 w-full p-4 rounded-md" placeholder="Enter technical observations..."></textarea>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <input type="text" id="action1" class="text-slate-900" placeholder="Priority 1 Action">
+                        <input type="text" id="action2" class="text-slate-900" placeholder="Priority 2 Action">
+                    </div>
+                    <button onclick="html2pdf().from(document.getElementById('report-content')).save()" class="mt-8 bg-white text-slate-900 font-black py-4 rounded-xl w-full uppercase text-xs tracking-widest shadow-xl hover:bg-slate-100 transition">
+                        Export Pro PDF Analysis
+                    </button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function updateUI() {
+            const role = document.getElementById('role').value;
+            const bat = document.getElementById('sec-bat');
+            const bowl = document.getElementById('sec-bowl');
+            const wk = document.getElementById('sec-wk');
+            [bat, bowl, wk].forEach(s => s.classList.add('section-hidden'));
+            if (role === 'Batter' || role === 'All rounder' || role === 'WK batter') bat.classList.remove('section-hidden');
+            if (role === 'Bowler' || role === 'All rounder') bowl.classList.remove('section-hidden');
+            if (role === 'WK batter') wk.classList.remove('section-hidden');
+        }
+        updateUI();
+    </script>
+</body>
+</html>
