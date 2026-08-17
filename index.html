@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coach's Lens - Ultimate Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, doc, getDoc, getDocs, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDIXjcyJUtypEn1IEUDHoS6G6O6y_EikEE",
+            authDomain: "coach-s-lens.firebaseapp.com",
+            projectId: "coach-s-lens",
+            storageBucket: "coach-s-lens.firebasestorage.app",
+            messagingSenderId: "1005983098932",
+            appId: "1:1005983098932:web:0265751d1388357ef6c261",
+            measurementId: "G-BCEBHTX0L6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // --- AUTH UI LOGIC ---
+        window.handleLogin = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPass').value;
+            try { await signInWithEmailAndPassword(auth, email, pass); } 
+            catch (e) { alert("Login Failed"); }
+        };
+
+        window.handleLogout = () => signOut(auth).then(() => location.reload());
+
+        onAuthStateChanged(auth, (user) => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('id')) return;
+            if (user) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('hidden');
+                loadDashboard();
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('app-interface').classList.add('hidden');
+            }
+        });
+
+        window.loadDashboard = async () => {
+            const list = document.getElementById('dashList');
+            list.innerHTML = "<p class='p-4 text-[10px] italic text-gray-400 uppercase tracking-widest'>Syncing Cloud Database...</p>";
+            const q = query(collection(db, "player_reports"), orderBy("timestamp", "desc"));
+            const snap = await getDocs(q);
+            list.innerHTML = "";
+            snap.forEach((docSnap) => {
+                const data = docSnap.data();
+                const shareURL = window.location.href.split('?')[0] + "?id=" + docSnap.id;
+                list.innerHTML += `
+                    <div class="p-3 border-b hover:bg-slate-50 flex justify-between items-center group">
+                        <div class="cursor-pointer" onclick="window.location.href='${shareURL}'">
+                            <p class="font-bold text-xs text-slate-700">${data.playerName || 'Player'}</p>
+                            <p class="text-[9px] text-emerald-600 font-bold uppercase tracking-tighter">${data.pRole}</p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="navigator.clipboard.writeText('${shareURL}'); alert('Link Copied!')" class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[9px] font-bold uppercase">Link</button>
+                            <button onclick="deleteR('${docSnap.id}')" class="bg-red-100 text-red-700 px-2 py-1 rounded text-[9px] font-bold uppercase">Del</button>
+                        </div>
+                    </div>`;
+            });
+        };
+
+        window.deleteR = async (id) => { if(confirm("Delete report?")) { await deleteDoc(doc(db, "player_reports", id)); loadDashboard(); } };
+
+        window.saveToCloud = async () => {
+            const btn = document.getElementById('saveBtn');
+            btn.innerText = "SAVING...";
+            const data = {};
+            document.querySelectorAll('input, select, textarea').forEach(el => { if(el.id) data[el.id] = el.value; });
+            try {
+                await addDoc(collection(db, "player_reports"), { ...data, timestamp: new Date() });
+                alert("Saved Successfully!"); btn.innerText = "SAVE PLAYER"; loadDashboard();
+            } catch (e) { alert("Error saving"); btn.innerText = "SAVE PLAYER"; }
+        };
+
+        window.onload = async () => {
+            const params = new URLSearchParams(window.location.search);
+            const reportId = params.get('id');
+            if (reportId) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('hidden');
+                document.getElementById('dashSide').classList.add('hidden');
+                document.getElementById('coachHeaderControls').classList.add('hidden');
+                const snap = await getDoc(doc(db, "player_reports", reportId));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    Object.keys(data).forEach(key => {
+                        const el = document.getElementById(key);
+                        if(el) { el.value = data[key]; el.disabled = true; el.style.background = "#f8fafc"; }
+                    });
+                    updateUI();
+                }
+            }
+        };
+
+        // --- NEW PROFESSIONAL PDF GENERATOR ---
+        window.downloadPDF = async () => {
+            const pName = document.getElementById('playerName').value || "Unnamed";
+            const pAge = document.getElementById('pAge').value || "N/A";
+            const pRole = document.getElementById('pRole').value;
+            const pHand = document.getElementById('pHand').value;
+            const pSummary = document.getElementById('pSummary').value || "No summary provided.";
+            const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            const pdfContainer = document.createElement('div');
+            pdfContainer.style.width = "800px";
+            pdfContainer.style.padding = "40px";
+            pdfContainer.style.background = "#fff";
+            pdfContainer.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+            pdfContainer.innerHTML = `
+                <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #065f46; padding-bottom: 20px; margin-bottom: 25px;">
+                        <div>
+                            <h1 style="margin:0; font-size: 32px; color: #065f46; font-weight: 900; letter-spacing: -1px;">COACH'S LENS</h1>
+                            <p style="margin:0; font-size: 10px; color: #64748b; font-weight: bold; letter-spacing: 2px; text-transform: uppercase;">Pro Performance Report</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="margin:0; font-size: 14px; color: #1e293b;"><b>Date:</b> ${dateStr}</p>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e2e8f0;">
+                        <div><small style="display:block; color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Player</small><b>${pName}</b></div>
+                        <div><small style="display:block; color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Age</small><b>${pAge}</b></div>
+                        <div><small style="display:block; color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Role</small><b>${pRole}</b></div>
+                        <div><small style="display:block; color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Style</small><b>${pHand} Hand</b></div>
+                    </div>
+
+                    <h2 style="font-size: 14px; color: #065f46; margin-bottom: 10px; border-bottom: 2px solid #f1f5f9; padding-bottom: 5px; text-transform: uppercase;">Technical Assessment</h2>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        <tr style="background: #065f46; color: white; font-size: 12px; text-transform: uppercase;">
+                            <th style="padding: 12px; text-align: left;">Category</th>
+                            <th style="padding: 12px; text-align: left;">Observation</th>
+                        </tr>
+                        ${Array.from(document.querySelectorAll('select:not(#pRole):not(#pHand)')).map(s => {
+                            if(s.closest('.section-hidden')) return '';
+                            const label = s.previousElementSibling?.innerText || "Technique";
+                            const val = s.value;
+                            const color = val.includes("Ideal") ? "#10b981" : "#ef4444";
+                            return `<tr style="border-bottom: 1px solid #f1f5f9; font-size: 12px;">
+                                <td style="padding: 10px; color: #475569; font-weight: bold; width: 40%; text-transform: uppercase; font-size: 10px;">${label}</td>
+                                <td style="padding: 10px; color: ${color}; font-weight: bold;">${val}</td>
+                            </tr>`;
+                        }).join('')}
+                    </table>
+
+                    <h2 style="font-size: 14px; color: #065f46; margin-bottom: 10px; text-transform: uppercase;">Coach's Summary & Action Items</h2>
+                    <div style="background: #fffbeb; border: 1px solid #fef3c7; padding: 20px; border-radius: 8px; font-size: 13px; color: #451a03; line-height: 1.6; min-height: 100px;">
+                        ${pSummary.replace(/\n/g, '<br>')}
+                    </div>
+
+                    <div style="margin-top: 50px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                        <p style="margin:0; font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Official Performance Analysis | Coach's Lens</p>
+                    </div>
+                </div>
+            `;
+
+            const opt = {
+                margin: 0,
+                filename: `Report_${pName}.pdf`,
+                image: { type: 'jpeg', quality: 1 },
+                html2canvas: { scale: 3, useCORS: true },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(pdfContainer).save();
+        };
+    </script>
+
+    <style>
+        .section-hidden { display: none; }
+        .ideal { color: #10b981; font-weight: bold; }
+        .form-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 1.5rem; margin-bottom: 1.5rem; }
+        label { font-weight: 800; color: #64748b; font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem; display: block; }
+        select, input, textarea { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 0.85rem; width: 100%; background: #fff; }
+        .pro-tag { background: #0f172a; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; margin-bottom: 10px; display: inline-block; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900">
+
+    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-slate-900 p-4 hidden">
+        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md border-t-8 border-emerald-500 text-center">
+            <h1 class="text-4xl font-black italic tracking-tighter mb-8">COACH'S LENS</h1>
+            <form onsubmit="handleLogin(event)" class="space-y-4 text-left">
+                <div><label>Email</label><input type="email" id="loginEmail" required></div>
+                <div><label>Password</label><input type="password" id="loginPass" required></div>
+                <button type="submit" class="w-full bg-slate-900 text-emerald-400 font-black py-4 rounded-xl uppercase tracking-widest text-xs shadow-lg">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="app-interface" class="hidden">
+        <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-xl no-print">
+            <h1 class="text-xl font-black italic tracking-tighter text-emerald-400">COACH'S LENS</h1>
+            <div id="coachHeaderControls" class="flex gap-4 items-center">
+                <button id="saveBtn" onclick="saveToCloud()" class="bg-emerald-600 px-6 py-2 rounded-md font-black text-[10px] uppercase shadow-lg">Save Player</button>
+                <button onclick="handleLogout()" class="text-[10px] font-bold text-slate-400 underline">Logout</button>
+            </div>
+        </nav>
+
+        <div class="max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">
+            <aside id="dashSide" class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-lg border sticky top-24 overflow-hidden">
+                    <p class="bg-slate-800 text-white p-3 text-[10px] font-black uppercase text-center">Cloud Database</p>
+                    <div id="dashList" class="max-h-[700px] overflow-y-auto"></div>
+                </div>
+            </aside>
+
+            <main id="report-content" class="lg:col-span-3">
+                <div class="form-card border-l-8 border-emerald-500">
+                    <span class="pro-tag">Basic Profile</span>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div><label>Name</label><input type="text" id="playerName"></div>
+                        <div><label>Age</label><input type="number" id="pAge"></div>
+                        <div><label>Role</label><select id="pRole" onchange="updateUI()"><option value="Batter">Batter</option><option value="Bowler">Bowler</option><option value="All rounder">All rounder</option><option value="WK batter">WK batter</option></select></div>
+                        <div><label>Hand</label><select id="pHand"><option>RH</option><option>LH</option></select></div>
+                    </div>
+                </div>
+
+                <div id="section-batting" class="space-y-4">
+                    <div class="form-card border-t-4 border-blue-600">
+                        <span class="pro-tag !bg-blue-600">Grip Assessment</span>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                            <div><label>Grip Handle</label><select id="b_gr_h"><option class="ideal">Ideal (Middle-MH)</option><option>Top(TH)</option><option>Bottom(BH)</option></select></div>
+                            <div><label>Top Hand V</label><select id="b_gr_tv"><option class="ideal">Ideal (Splice-SP)</option><option>Outer(BSO)</option><option>Inner(BSI)</option></select></div>
+                            <div><label>Bottom Hand V</label><select id="b_gr_bv"><option class="ideal">Ideal (Splice-SP)</option><option>Outer(BSO)</option><option>Inner(BSI)</option></select></div>
+                        </div>
+                    </div>
+                    <div class="form-card border-t-4 border-blue-400">
+                        <span class="pro-tag !bg-blue-400">Stance & Trigger</span>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                            <div><label>Guard</label><select id="b_gu"><option class="ideal">Middle(MS)</option><option>Leg(LS)</option><option>Off(OS)</option></select></div>
+                            <div><label>Width</label><select id="b_wi"><option class="ideal">Shoulder(SW)</option><option>Narrow(NW)</option><option>Wide(WD)</option></select></div>
+                            <div><label>Trigger Timing</label><select id="b_tt"><option class="ideal">On Time(OT)</option><option>Early(EY)</option><option>Late(LT)</option></select></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="section-bowling" class="form-card border-t-4 border-red-600 section-hidden">
+                    <span class="pro-tag !bg-red-600">Bowling Technicals</span>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                        <div><label>Run Up</label><select id="bo_ru"><option class="ideal">Ideal (Straight)</option><option>Curved</option></select></div>
+                        <div><label>Loading</label><select id="bo_lo"><option class="ideal">Ideal (Close)</option><option>Away</option></select></div>
+                        <div><label>Release</label><select id="bo_re"><option class="ideal">Ideal (Vertical)</option><option>Round Arm</option></select></div>
+                    </div>
+                </div>
+
+                <div class="form-card bg-slate-900 text-white shadow-2xl">
+                    <label class="text-emerald-400">Coach's Summary</label>
+                    <textarea id="pSummary" class="text-slate-900 h-40 w-full p-4 rounded-md mb-6" placeholder="Final assessment..."></textarea>
+                    <button onclick="downloadPDF()" class="bg-emerald-500 text-slate-900 font-black py-4 rounded-xl w-full uppercase tracking-widest text-xs shadow-lg">Download Professional PDF Report</button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function updateUI() {
+            const role = document.getElementById('pRole').value;
+            const bat = document.getElementById('section-batting');
+            const bowl = document.getElementById('section-bowling');
+            bat.classList.add('section-hidden'); bowl.classList.add('section-hidden');
+            if (role === 'Batter' || role === 'All rounder' || role === 'WK batter') bat.classList.remove('section-hidden');
+            if (role === 'Bowler' || role === 'All rounder') bowl.classList.remove('section-hidden');
+        }
+        updateUI();
+    </script>
+</body>
+</html>
