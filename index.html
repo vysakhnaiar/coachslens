@@ -227,7 +227,8 @@
             if (user) {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('app-interface').classList.remove('hidden');
-                document.getElementById('coachEmailLabel').innerText = user.email || '';
+                const coachEmailLabel = document.getElementById('coachEmailLabel');
+                if (coachEmailLabel) coachEmailLabel.innerText = user.email || '';
                 openSection('players');
                 await loadPlayers();
             } else {
@@ -524,32 +525,75 @@
                 </div>`).join('');
         }
 
+        function getFormValue(id, fallback = '') {
+            const el = document.getElementById(id);
+            return el ? el.value : fallback;
+        }
+
         function readFormData() {
             const data = {
-                date: document.getElementById('sessionDate').value,
-                sessionType: document.getElementById('sessionType').value,
-                duration: document.getElementById('sessionDuration').value,
-                surface: document.getElementById('sessionSurface').value,
-                conditions: document.getElementById('sessionConditions').value,
-                objective: document.getElementById('sessionObjective').value,
-                baseline: document.getElementById('sessionBaseline').value,
-                intervention: document.getElementById('sessionIntervention').value,
-                response: document.getElementById('sessionResponse').value,
-                outcome: document.getElementById('sessionOutcome').value,
-                nextAction: document.getElementById('sessionNextAction').value,
-                tags: document.getElementById('sessionTags').value,
-                videoUrl: document.getElementById('sessionVideoUrl').value,
-                summary: document.getElementById('pSummary').value,
+                date: getFormValue('sessionDate', todayISO()),
+                // These fields are optional in the current assessment UI.
+                // Never dereference a missing element, because doing so
+                // previously stopped saveSession() before its try/catch.
+                sessionType: getFormValue('sessionType', 'Training'),
+                duration: getFormValue('sessionDuration'),
+                surface: getFormValue('sessionSurface'),
+                conditions: getFormValue('sessionConditions'),
+                objective: getFormValue('sessionObjective'),
+                baseline: getFormValue('sessionBaseline'),
+                intervention: getFormValue('sessionIntervention'),
+                response: getFormValue('sessionResponse'),
+                outcome: getFormValue('sessionOutcome'),
+                nextAction: getFormValue('sessionNextAction'),
+                tags: getFormValue('sessionTags'),
+                videoUrl: getFormValue('sessionVideoUrl'),
+                summary: getFormValue('pSummary'),
                 match: {}
             };
-            ['runs','balls','fours','sixes','dismissal','overs','conceded','wickets','catches','missedCatches','runOuts','directHits','misfields'].forEach(k=>{
-                const el=document.getElementById('m_'+k); if(el) data.match[k]=el.value;
+
+            // Support both the assessment-form field names and the
+            // dedicated Match Data form field names.
+            const matchFieldMap = {
+                runs: ['m_runs'],
+                balls: ['m_balls'],
+                fours: ['m_fours', 'm_4s'],
+                sixes: ['m_sixes', 'm_6s'],
+                dismissal: ['m_dismissal'],
+                overs: ['m_overs'],
+                conceded: ['m_conceded'],
+                wickets: ['m_wickets'],
+                catches: ['m_catches'],
+                missedCatches: ['m_missedCatches', 'm_missed'],
+                runOuts: ['m_runOuts', 'm_runouts'],
+                directHits: ['m_directHits', 'm_direct'],
+                misfields: ['m_misfields']
+            };
+
+            Object.entries(matchFieldMap).forEach(([key, ids]) => {
+                for (const id of ids) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        data.match[key] = el.value;
+                        break;
+                    }
+                }
             });
+
+            // Preserve the newer match-analysis fields when they exist.
+            ['battingAt','dismissalMode','bowlerType','shotOffered','length','line',
+             'result','dotBalls','wides','noBalls','coachPlayerNotes'].forEach(key => {
+                const el = document.getElementById('m_' + key);
+                if (el) data.match[key] = el.value;
+            });
+
             SECTIONS.forEach(sec => sec.fields.forEach(f => {
-                const el=document.getElementById(f.id), score=document.getElementById(f.id+'_score');
-                data[f.id]=el?el.value:'';
-                data[f.id+'_score']=score?score.value:'';
+                const el = document.getElementById(f.id);
+                const score = document.getElementById(f.id + '_score');
+                data[f.id] = el ? el.value : '';
+                data[f.id + '_score'] = score ? score.value : '';
             }));
+
             return data;
         }
 
@@ -586,23 +630,67 @@
         window.cancelSessionForm = () => openSection('playerDetail');
 
         window.saveSession = async () => {
-            const data = readFormData();
-            data.role = currentPlayer.role;
-            data.coachId = auth.currentUser.uid;
-            data.coachEmail = auth.currentUser.email;
-            data.updatedAt = new Date();
+            const btn = document.querySelector('#assessmentSection button[onclick="saveSession()"]');
+            const originalText = btn ? btn.innerText : 'Save Assessment';
+
             try {
+                if (!auth.currentUser) {
+                    throw new Error('You are not signed in. Please sign in again.');
+                }
+                if (!currentPlayer || !currentPlayer.id) {
+                    throw new Error('No player is selected.');
+                }
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerText = 'SAVING...';
+                    btn.classList.add('opacity-60', 'cursor-not-allowed');
+                }
+
+                const data = readFormData();
+                data.role = currentPlayer.role;
+                data.coachId = auth.currentUser.uid;
+                data.coachEmail = auth.currentUser.email || '';
+                data.updatedAt = new Date();
+
+                let savedSessionId = currentSessionId;
+
                 if (currentSessionId) {
-                    await updateDoc(doc(db, 'players', currentPlayer.id, 'sessions', currentSessionId), data);
+                    await updateDoc(
+                        doc(db, 'players', currentPlayer.id, 'sessions', currentSessionId),
+                        data
+                    );
                 } else {
                     data.createdAt = new Date();
-                    await addDoc(collection(db, 'players', currentPlayer.id, 'sessions'), data);
+                    const ref = await addDoc(
+                        collection(db, 'players', currentPlayer.id, 'sessions'),
+                        data
+                    );
+                    savedSessionId = ref.id;
+                    currentSessionId = ref.id;
                 }
-                await recomputePlayerAggregates(currentPlayer.id);
-                alert('Session saved.');
+
+                // Aggregate calculation is secondary. The session has already
+                // been safely written at this point.
+                try {
+                    await recomputePlayerAggregates(currentPlayer.id);
+                } catch (aggregateError) {
+                    console.warn('Session saved, but aggregate refresh failed:', aggregateError);
+                }
+
+                if (btn) btn.innerText = 'SAVED ✓';
+                alert('Assessment saved successfully.');
+
                 await openPlayer(currentPlayer.id);
             } catch (err) {
-                alert('Save failed: ' + err.message);
+                console.error('Save session error:', err);
+                alert('Save failed: ' + (err && err.message ? err.message : String(err)));
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                    btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                }
             }
         };
 
@@ -1063,49 +1151,78 @@
         };
 
         window.saveMatch=async()=>{
-            const data={
-                date:m_date.value,
-                name:m_name.value,
-                playerId:m_player.value,
-                result:m_result.value,
-
-                runs:Number(m_runs.value||0),
-                balls:Number(m_balls.value||0),
-                fours:Number(m_4s.value||0),
-                sixes:Number(m_6s.value||0),
-
-                overs:m_overs.value,
-                runsConceded:Number(m_conceded.value||0),
-                wickets:Number(m_wickets.value||0),
-                dotBalls:Number(m_dotballs.value||0),
-                wides:Number(m_wides.value||0),
-                noBalls:Number(m_noballs.value||0),
-
-                catches:Number(m_catches.value||0),
-                missedCatches:Number(m_missed.value||0),
-                runOuts:Number(m_runouts.value||0),
-                directHits:Number(m_direct.value||0),
-                misfields:Number(m_misfields.value||0),
-
-                battingAt:m_battingAt.value,
-                dismissalMode:m_dismissal.value,
-                bowlerType:m_bowlerType.value,
-                shotOffered:m_shotOffered.value,
-                length:m_length.value,
-                line:m_line.value,
-
-                coachPlayerNotes:m_notes.value,
-
-                coachId:auth.currentUser.uid,
-                createdAt:new Date()
+            const get = (id, fallback='') => {
+                const el = document.getElementById(id);
+                return el ? el.value : fallback;
             };
+            const num = (id) => Number(get(id, 0) || 0);
 
-            try{
+            const btn = document.querySelector('#matchFormWrap button[onclick="saveMatch()"]');
+            const originalText = btn ? btn.innerText : 'Save Match';
+
+            try {
+                if (!auth.currentUser) throw new Error('You are not signed in. Please sign in again.');
+
+                const data={
+                    date:get('m_date', todayISO()),
+                    name:get('m_name'),
+                    playerId:get('m_player'),
+                    result:get('m_result'),
+
+                    runs:num('m_runs'),
+                    balls:num('m_balls'),
+                    fours:num('m_4s'),
+                    sixes:num('m_6s'),
+
+                    overs:get('m_overs'),
+                    runsConceded:num('m_conceded'),
+                    wickets:num('m_wickets'),
+                    dotBalls:num('m_dotballs'),
+                    wides:num('m_wides'),
+                    noBalls:num('m_noballs'),
+
+                    catches:num('m_catches'),
+                    missedCatches:num('m_missed'),
+                    runOuts:num('m_runouts'),
+                    directHits:num('m_direct'),
+                    misfields:num('m_misfields'),
+
+                    battingAt:get('m_battingAt'),
+                    dismissalMode:get('m_dismissal'),
+                    bowlerType:get('m_bowlerType'),
+                    shotOffered:get('m_shotOffered'),
+                    length:get('m_length'),
+                    line:get('m_line'),
+
+                    coachPlayerNotes:get('m_notes'),
+
+                    coachId:auth.currentUser.uid,
+                    coachEmail:auth.currentUser.email || '',
+                    createdAt:new Date()
+                };
+
+                if (!data.name.trim()) throw new Error('Match name is required.');
+                if (!data.playerId) throw new Error('Please select a player.');
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerText = 'SAVING...';
+                    btn.classList.add('opacity-60','cursor-not-allowed');
+                }
+
                 await addDoc(collection(db,'matches'),data);
-                alert('Match saved.');
+                if (btn) btn.innerText = 'SAVED ✓';
+                alert('Match saved successfully.');
                 openSection('matches');
             }catch(e){
-                alert('Could not save match: '+e.message);
+                console.error('Save match error:', e);
+                alert('Could not save match: '+(e && e.message ? e.message : String(e)));
+            }finally{
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                    btn.classList.remove('opacity-60','cursor-not-allowed');
+                }
             }
         };
 
@@ -2024,5 +2141,18 @@
         </div>
     </div>
 
+<div id="appErrorToast" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;max-width:420px;padding:14px 16px;border-radius:10px;background:#7f1d1d;color:#fff;font:14px/1.4 system-ui, sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25)"></div>
+<script>
+window.addEventListener('error', function(e) {
+  console.error(e.error || e.message);
+  var t=document.getElementById('appErrorToast');
+  if(t){ t.textContent='App error: '+(e.message||'Unknown JavaScript error'); t.style.display='block'; }
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error(e.reason);
+  var t=document.getElementById('appErrorToast');
+  if(t){ t.textContent='Save/action error: '+((e.reason&&e.reason.message)||String(e.reason)); t.style.display='block'; }
+});
+</script>
 </body>
 </html>
