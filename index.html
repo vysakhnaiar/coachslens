@@ -699,6 +699,7 @@
         // ============================================================
         let coachingSessionsCache = [];
         let matchesCache = [];
+        let reportSessionsCache = [];
 
         function renderPlayerSnapshot(player) {
             const el = document.getElementById('playerSnapshot');
@@ -1141,24 +1142,64 @@
             updateHomeStats();
         }
 
-        function populateReportSelectors(){
-            const p=document.getElementById('reportPlayerSelect'), s=document.getElementById('reportSessionSelect');
-            if(p)p.innerHTML=allPlayers.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
-            if(s)s.innerHTML=[...sessionsCache,...coachingSessionsCache].map(x=>`<option value="${x.id}">${formatDateDisplay(x.date)} · ${escapeHtml(x.type||x.role||'Assessment')}</option>`).join('');
+        async function populateReportSelectors(){
+            const playerSelect=document.getElementById('reportPlayerSelect');
+            const sessionSelect=document.getElementById('reportSessionSelect');
+            if(playerSelect){
+                playerSelect.innerHTML=allPlayers.length
+                    ? allPlayers.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')
+                    : '<option value="">No players available</option>';
+            }
+            if(!sessionSelect) return;
+
+            sessionSelect.innerHTML='<option value="">Loading sessions…</option>';
+            try{
+                const individualResults=await Promise.all(allPlayers.map(async player=>{
+                    const snap=await getDocs(collection(db,'players',player.id,'sessions'));
+                    return snap.docs.map(d=>({id:d.id,playerId:player.id,playerName:player.name,...d.data()}));
+                }));
+                const coachingSnap=await getDocs(query(collection(db,'coachingSessions'),where('coachId','==',auth.currentUser.uid)));
+                const coaching=coachingSnap.docs.map(d=>({id:d.id,kind:'coaching',...d.data()}));
+                reportSessionsCache=[...individualResults.flat(),...coaching]
+                    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+                sessionSelect.innerHTML=reportSessionsCache.length
+                    ? reportSessionsCache.map(item=>{
+                        const label=item.kind==='coaching'
+                            ? `${formatDateDisplay(item.date)} · ${item.type||'Coaching session'}`
+                            : `${formatDateDisplay(item.date)} · ${item.playerName||'Player'} · Assessment`;
+                        return `<option value="${item.id}">${escapeHtml(label)}</option>`;
+                    }).join('')
+                    : '<option value="">No sessions available</option>';
+            }catch(err){
+                reportSessionsCache=[];
+                sessionSelect.innerHTML='<option value="">Unable to load sessions</option>';
+                console.error('Unable to load report sessions:',err);
+            }
         }
 
         window.generatePlayerReport=async()=>{
             const pid=document.getElementById('reportPlayerSelect').value;
-            const p=allPlayers.find(x=>x.id===pid); if(!p)return;
-            const snap=await getDocs(collection(db,'players',pid,'sessions')); const ss=[]; snap.forEach(d=>ss.push({id:d.id,...d.data()}));
-            ss.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-            const latest=ss[0]||{}; const sc=calculateAssessmentScores(latest);
-            document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(p.name)}</h2><p>${escapeHtml(p.role||'')} · ${escapeHtml(p.level||'')}</p><div class="report-score">${sc.overall}%</div><h3>Technical Snapshot</h3>${sc.items.map(x=>`<div class="report-line"><span>${escapeHtml(x.label)}</span><b>${x.score}/5</b></div>`).join('')}<h3>Coach Summary</h3><p>${escapeHtml(latest.summary||'No assessment summary.')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
+            const p=allPlayers.find(x=>x.id===pid), preview=document.getElementById('reportPreview');
+            if(!p){ preview.innerHTML='<p class="text-sm text-slate-500">Select a player first.</p>'; return; }
+            try{
+                const snap=await getDocs(collection(db,'players',pid,'sessions')); const ss=[]; snap.forEach(d=>ss.push({id:d.id,...d.data()}));
+                ss.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+                const latest=ss[0]||{}; const sc=calculateAssessmentScores(latest);
+                preview.innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(p.name)}</h2><p>${escapeHtml(p.role||'')} · ${escapeHtml(p.level||'')}</p><div class="report-score">${sc.overall}%</div><h3>Technical Snapshot</h3>${sc.items.map(x=>`<div class="report-line"><span>${escapeHtml(x.label)}</span><b>${x.score}/5</b></div>`).join('')}<h3>Coach Summary</h3><p>${escapeHtml(latest.summary||'No assessment summary.')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
+            }catch(err){
+                preview.innerHTML='<p class="text-sm text-red-600">Unable to load this player report. Please try again.</p>';
+                console.error('Unable to generate player report:',err);
+            }
         };
 
         window.generateSessionReport=()=>{
             const id=document.getElementById('reportSessionSelect').value;
-            const s=coachingSessionsCache.find(x=>x.id===id)||sessionsCache.find(x=>x.id===id); if(!s)return;
+            const s=reportSessionsCache.find(x=>x.id===id);
+            if(!s){
+                document.getElementById('reportPreview').innerHTML='<p class="text-sm text-slate-500">Select a session first.</p>';
+                return;
+            }
             const p=allPlayers.find(x=>x.id===s.playerId);
             document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(s.type||'Assessment')} · ${formatDateDisplay(s.date)}</h2><p>${escapeHtml(p?p.name:'Team Session')} · ${escapeHtml(s.category||s.role||'')}</p><h3>Session Objective</h3><p>${escapeHtml(s.objective||'')}</p><h3>Objective Achieved</h3><p><b>${escapeHtml(s.objectiveResult||'—')}</b> ${escapeHtml(s.objectiveReason||'')}</p><h3>What Went Well</h3><p>${escapeHtml(s.wentWell||'')}</p><h3>What Can Be Improved</h3><p>${escapeHtml(s.improve||'')}</p><h3>Coach's Day Note</h3><p>${escapeHtml(s.dayNote||'')}</p><h3>Player Day Notes</h3>${(s.playerDayNotes||[]).map(n=>{const pp=allPlayers.find(x=>x.id===n.playerId);return `<div class="report-line"><span><b>${escapeHtml(pp?pp.name:'Player')}</b><br>${escapeHtml(n.note)}</span><b>${escapeHtml(n.tags||'')}</b></div>`}).join('')||'<p>No player notes.</p>'}<h3>Next Action</h3><p>${escapeHtml(s.nextAction||'')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
         };
