@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'">
     <title>Coach's Lens - Pro Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
         import { getFirestore, collection, addDoc, doc, getDoc, getDocs, deleteDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -23,6 +26,10 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaEnterpriseProvider('6LeuQJEtAAAAAN-noLP8fhazrCPIrQMbWcYU9dIN'),
+            isTokenAutoRefreshEnabled: true
+        });
         const db = getFirestore(app);
         const auth = getAuth(app);
 
@@ -144,7 +151,7 @@
         function formatDateDisplay(iso) {
             if (!iso) return '—';
             const d = new Date(iso + 'T00:00:00');
-            if (isNaN(d)) return iso;
+            if (isNaN(d)) return escapeHtml(iso);
             return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
         }
         function todayISO() {
@@ -208,47 +215,15 @@
         // ============================================================
         window.handleLogin = async (e) => {
             e.preventDefault();
-            const email = document.getElementById('loginEmail').value;
+            const email = document.getElementById('loginEmail').value.trim();
             const pass = document.getElementById('loginPass').value;
             try { await signInWithEmailAndPassword(auth, email, pass); }
-            catch (err) { alert("Login Failed: " + err.message); }
+            catch (err) { alert('Login failed. Check your email and password, then try again.'); }
         };
 
         window.handleLogout = () => signOut(auth).then(() => location.reload());
 
-        async function tryLoadSharedView() {
-            const params = new URLSearchParams(window.location.search);
-            const pid = params.get('player');
-            const sid = params.get('session');
-            if (!pid || !sid) return false;
-
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-interface').classList.add('hidden');
-            document.getElementById('sharedView').classList.remove('hidden');
-
-            const container = document.getElementById('sharedReportContainer');
-            try {
-                const pSnap = await getDoc(doc(db, 'players', pid));
-                const sSnap = await getDoc(doc(db, 'players', pid, 'sessions', sid));
-                if (pSnap.exists() && sSnap.exists()) {
-                    const player = { id: pid, ...pSnap.data() };
-                    const session = { id: sid, ...sSnap.data() };
-                    window._sharedPlayer = player;
-                    window._sharedSession = session;
-                    container.innerHTML = buildReportHTML(player, session);
-                } else {
-                    container.innerHTML = '<p class="p-10 text-center text-slate-400 text-sm">This report could not be found.</p>';
-                }
-            } catch (err) {
-                container.innerHTML = '<p class="p-10 text-center text-red-400 text-sm">Unable to load this report (permission denied or link invalid).</p>';
-            }
-            return true;
-        }
-
         onAuthStateChanged(auth, async (user) => {
-            const isShared = await tryLoadSharedView();
-            if (isShared) return;
-
             if (user) {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('app-interface').classList.remove('hidden');
@@ -505,18 +480,11 @@
                     <div class="flex gap-1 flex-wrap justify-end">
                         <button onclick="openSession('${s.id}')" class="btn-mini bg-slate-100 text-slate-700">Edit</button>
                         <button onclick="quickDownload('${s.id}')" class="btn-mini bg-emerald-100 text-emerald-700">PDF</button>
-                        <button onclick="copyShareLink('${s.id}')" class="btn-mini bg-blue-100 text-blue-700">Link</button>
                         <button onclick="confirmDeleteSession('${s.id}')" class="btn-mini bg-red-100 text-red-700">Del</button>
                     </div>
                 </div>`;
             }).join('');
         }
-
-        window.copyShareLink = (sessionId) => {
-            const url = `${location.origin}${location.pathname}?player=${currentPlayer.id}&session=${sessionId}`;
-            navigator.clipboard.writeText(url);
-            alert('Share link copied!');
-        };
 
         window.quickDownload = (sessionId) => {
             const s = sessionsCache.find(x => x.id === sessionId);
@@ -644,13 +612,9 @@
             downloadPDF(currentPlayer, data);
         };
 
-        window.downloadSharedPDF = () => {
-            if (window._sharedPlayer && window._sharedSession) downloadPDF(window._sharedPlayer, window._sharedSession);
-        };
-
         // ============================================================
         // REPORT / PDF ENGINE
-        // Builds the same HTML for on-screen shared view AND for the PDF,
+        // Builds the report used for downloadable PDFs,
         // driven entirely by the SECTIONS config + a plain data object
         // (never reads from the live DOM here — avoids ID-mismatch bugs).
         // ============================================================
@@ -1087,7 +1051,7 @@
 
                 <div class="mt-6 border-t border-slate-200 pt-5">
                     <span class="pro-tag !bg-emerald-600">COACH / PLAYER NOTES</span>
-                    <label>Match Notes</label>
+                    <label for="m_notes">Coach / Player Notes</label>
                     <textarea id="m_notes" rows="5" placeholder="What went well? What can be improved? Key moments? Player comments? Next action?"></textarea>
                 </div>
 
@@ -1157,8 +1121,14 @@
                         <div>
                             <b class="text-xs">${escapeHtml(p?p.name:'Player')}</b>
                             <p class="text-[9px] text-slate-400">${formatDateDisplay(m.date)} · ${escapeHtml(m.name||'Match')}</p>
-                            ${m.battingAt?`<p class="text-[9px] text-slate-500 mt-1">Batting: ${escapeHtml(m.battingAt)}</p>`:''}
-                            ${m.dismissalMode?`<p class="text-[9px] text-slate-500">Dismissal: ${escapeHtml(m.dismissalMode)}</p>`:''}
+                            ${(m.battingAt || m.dismissalMode || m.bowlerType || m.shotOffered || m.length || m.line) ? `<p class="text-[9px] text-slate-500 mt-1">${[
+                                m.battingAt && `Batting at: ${escapeHtml(m.battingAt)}`,
+                                m.dismissalMode && `Dismissal: ${escapeHtml(m.dismissalMode)}`,
+                                m.bowlerType && `Bowler: ${escapeHtml(m.bowlerType)}`,
+                                m.shotOffered && `Shot: ${escapeHtml(m.shotOffered)}`,
+                                m.length && `Length: ${escapeHtml(m.length)}`,
+                                m.line && `Line: ${escapeHtml(m.line)}`
+                            ].filter(Boolean).join(' · ')}</p>` : ''}
                             ${m.coachPlayerNotes?`<p class="text-[9px] text-slate-600 mt-1">${escapeHtml(m.coachPlayerNotes)}</p>`:''}
                         </div>
                         <div class="text-right text-[10px] font-bold">
@@ -1543,23 +1513,32 @@
         }
 
 
-        /* V10 — guaranteed form visibility */
+        /* Form controls must remain readable even when a parent uses dark text styles. */
         input, textarea, select {
-            color:#111827 !important;
-            -webkit-text-fill-color:#111827 !important;
-            background-color:#ffffff !important;
-            border-color:#cbd5e1 !important;
-            opacity:1 !important;
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            background-color: #ffffff !important;
+            border-color: #94a3b8 !important;
+            color-scheme: light;
+            opacity: 1 !important;
         }
         input::placeholder, textarea::placeholder {
-            color:#64748b !important;
-            -webkit-text-fill-color:#64748b !important;
-            opacity:1 !important;
+            color: #475569 !important;
+            -webkit-text-fill-color: #475569 !important;
+            opacity: 1 !important;
         }
-        select option {
-            color:#111827 !important;
-            -webkit-text-fill-color:#111827 !important;
-            background-color:#ffffff !important;
+        select option, select optgroup {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            background-color: #ffffff !important;
+        }
+        input:focus, textarea:focus, select:focus {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            background-color: #ffffff !important;
+            border-color: #059669 !important;
+            outline: 2px solid rgba(5, 150, 105, .18);
+            outline-offset: 1px;
         }
         label {
             color:#334155 !important;
@@ -2001,16 +1980,6 @@
                 <button onclick="saveNewPlayer()" class="bg-emerald-600 text-white flex-1 py-3 rounded-md font-black text-[10px] uppercase">Create</button>
                 <button onclick="closeNewPlayerModal()" class="bg-slate-100 text-slate-600 flex-1 py-3 rounded-md font-black text-[10px] uppercase">Cancel</button>
             </div>
-        </div>
-    </div>
-
-    <!-- SHARED READ-ONLY VIEW -->
-    <div id="sharedView" class="hidden min-h-screen bg-slate-100 p-6">
-        <div class="max-w-3xl mx-auto">
-            <div class="flex justify-end mb-4">
-                <button onclick="downloadSharedPDF()" class="bg-emerald-600 text-white px-5 py-3 rounded-md text-[10px] font-black uppercase shadow-lg">Download PDF</button>
-            </div>
-            <div id="sharedReportContainer" class="bg-white rounded-xl shadow border overflow-hidden"></div>
         </div>
     </div>
 
