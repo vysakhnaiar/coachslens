@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsDocument() {
+      return signedIn() && resource.data.coachId == request.auth.uid;
+    }
+
+    function createsOwnedDocument() {
+      return signedIn() && request.resource.data.coachId == request.auth.uid;
+    }
+
+    function keepsOwnership() {
+      return signedIn()
+        && resource.data.coachId == request.auth.uid
+        && request.resource.data.coachId == resource.data.coachId;
+    }
+
+    function ownsPlayer(playerId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/players/$(playerId)).data.coachId == request.auth.uid;
+    }
+
+    // Player records and every nested session/note belong to one coach.
+    match /players/{playerId} {
+      allow read, delete: if ownsDocument();
+      allow create: if createsOwnedDocument();
+      allow update: if keepsOwnership();
+
+      match /{document=**} {
+        allow read, write: if ownsPlayer(playerId);
+      }
+    }
+
+    // Top-level coaching and match records are likewise private to their owner.
+    match /coachingSessions/{sessionId} {
+      allow read, delete: if ownsDocument();
+      allow create: if createsOwnedDocument();
+      allow update: if keepsOwnership();
+    }
+
+    match /matches/{matchId} {
+      allow read, delete: if ownsDocument();
+      allow create: if createsOwnedDocument();
+      allow update: if keepsOwnership();
+    }
+
+    // Every unlisted collection is denied by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
