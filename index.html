@@ -192,33 +192,8 @@
 
         async function populateEducationAccess(existingIds = []) {
             const wrap = document.getElementById('edu_access');
-            if (!wrap) return;
-            if (!canManageEducation() && !canUploadEducation()) {
-                wrap.innerHTML = '';
-                return;
-            }
-            try {
-                const snap = await getDocs(collection(db, 'users'));
-                const coaches = snap.docs.map(d => ({ id:d.id, ...d.data() }))
-                    .filter(u => u.role !== ROLE_ADMIN && u.status === 'approved' && u.active === true);
-                wrap.innerHTML = `
-                    <label class="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2">
-                        <input id="edu_all_coaches" type="checkbox" class="w-4 h-4" onchange="toggleAllEducationCoaches(this.checked)">
-                        Give access to all approved coaches
-                    </label>
-                    <div class="grid sm:grid-cols-2 gap-2 max-h-40 overflow-auto border rounded-xl p-3 bg-slate-50">
-                        ${coaches.length ? coaches.map(u => `
-                            <label class="flex items-center gap-2 text-xs text-slate-700">
-                                <input type="checkbox" name="eduCoach" value="${escapeHtml(u.id)}" ${existingIds.includes(u.id) ? 'checked' : ''} class="w-4 h-4">
-                                <span>${escapeHtml(u.name || 'Coach')} <span class="text-slate-400">(${escapeHtml(u.email || '')})</span></span>
-                            </label>`).join('') : '<p class="text-xs text-slate-500">No approved coaches available yet.</p>'}
-                    </div>`;
-                const all = coaches.length > 0 && coaches.every(u => existingIds.includes(u.id));
-                const allBox = document.getElementById('edu_all_coaches');
-                if (allBox) allBox.checked = all;
-            } catch (err) {
-                console.error(err);
-                wrap.innerHTML = '<p class="text-xs text-red-600">Could not load coach access list.</p>';
+            if (wrap) {
+                wrap.innerHTML = '<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">All approved and active coaches can view every published learning material.</div>';
             }
         }
 
@@ -237,8 +212,7 @@
                 if (canManageEducation()) {
                     snap = await getDocs(collection(db, 'educationMaterials'));
                 } else {
-                    const q = query(collection(db, 'educationMaterials'), where('allowedCoachIds', 'array-contains', auth.currentUser.uid));
-                    snap = await getDocs(q);
+                    snap = await getDocs(collection(db, 'educationMaterials'));
                 }
                 educationMaterialsCache = snap.docs.map(d => ({ id:d.id, ...d.data() }))
                     .sort((a,b) => String(b.createdAt?.seconds || 0).localeCompare(String(a.createdAt?.seconds || 0)));
@@ -323,12 +297,11 @@
             const tags = document.getElementById('edu_tags').value.split(',').map(x => x.trim()).filter(Boolean).slice(0,20);
             const file = document.getElementById('edu_file').files[0];
             const id = document.getElementById('edu_id').value.trim();
-            const allowedCoachIds = [...document.querySelectorAll('input[name="eduCoach"]:checked')].map(x => x.value);
+            const allowedCoachIds = [];
             if (!title || !category) return notify('Title and category are required.');
             if (!id && !file) return notify('Please select a PDF file.');
             if (file && (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'))) return notify('Only PDF files are allowed.');
             if (file && file.size > 25 * 1024 * 1024) return notify('PDF must be 25 MB or smaller.');
-            if (!allowedCoachIds.length) return notify('Select at least one approved coach for access.');
             try {
                 const materialRef = id ? doc(db, 'educationMaterials', id) : doc(collection(db, 'educationMaterials'));
                 const oldSnap = id ? await getDoc(materialRef) : null;
@@ -620,8 +593,7 @@
                 document.getElementById('app-interface').classList.remove('hidden');
                 const coachEmailLabel = document.getElementById('coachEmailLabel');
                 if (coachEmailLabel) coachEmailLabel.innerText = `${user.email || ''}${currentUserProfile?.role ? ' · ' + String(currentUserProfile.role).toUpperCase() : ''}`;
-                openSection('players');
-                await loadPlayers();
+                showHome();
             } catch (err) {
                 console.error(err);
                 await signOut(auth);
@@ -681,7 +653,7 @@
         // ============================================================
         function setSideActive(name){
             document.querySelectorAll('.side-link').forEach(x=>x.classList.remove('active'));
-            const key = name==='playerDetail'||name==='assessment'||name==='newPlayer' ? 'players' :
+            const key = name==='playerDetail'||name==='assessment' ? 'players' :
                         name==='coachingPlanner' ? 'coaching' : name;
             const btn=document.querySelector(`.side-link[data-side="${key}"]`);
             if(btn)btn.classList.add('active');
@@ -700,7 +672,7 @@
             setSideActive(name);
             document.querySelectorAll('.app-section').forEach(x => x.classList.add('hidden'));
             const map = {
-                players:'playersSection', newPlayer:'newPlayerSection', playerDetail:'playerDetailSection',
+                players:'playersSection', playerDetail:'playerDetailSection',
                 coaching:'coachingSection', coachingPlanner:'coachingPlannerSection',
                 matches:'matchesSection', reports:'reportsSection', education:'educationSection', assessment:'assessmentSection'
             };
@@ -764,41 +736,48 @@
         };
 
         // ============================================================
-        // NEW PLAYER PAGE
+        // NEW PLAYER MODAL
         // ============================================================
-        window.openNewPlayerPage = () => {
-            const fields = {
-                np_name: '',
-                np_dob: '',
-                np_age: '',
-                np_gender: '',
-                np_role: 'Batter',
-                np_secondaryRole: '',
-                np_hand: 'RH',
-                np_bowlingArm: '',
-                np_bowlingType: '',
-                np_battingPosition: '',
-                np_level: 'Development',
-                np_contact: ''
-            };
-            Object.entries(fields).forEach(([id, value]) => {
-                const el = document.getElementById(id);
-                if (el) el.value = value;
-            });
-            openSection('newPlayer');
-            setTimeout(() => document.getElementById('np_name')?.focus(), 50);
+        window.openNewPlayerModal = () => {
+            const ids = ['np_name','np_dob','np_age','np_gender','np_secondaryRole','np_bowlingType','np_contact'];
+            ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+            document.getElementById('np_role').value = 'Batter';
+            document.getElementById('np_hand').value = 'RH';
+            document.getElementById('np_bowlingArm').value = '';
+            document.getElementById('np_battingPosition').value = '';
+            document.getElementById('np_level').value = 'Development';
+
+            const idCard=document.getElementById('newPlayerIdCard');
+            if(idCard) idCard.textContent='CL' + '•'.repeat(9);
+
+            document.getElementById('homeView').classList.add('hidden');
+            document.querySelectorAll('.app-section').forEach(x => x.classList.add('hidden'));
+            document.getElementById('playerModal').classList.remove('hidden');
+            document.getElementById('playerModal').scrollTop=0;
         };
 
-        // Backwards-compatible name so any existing quick actions still work.
-        window.openNewPlayerModal = window.openNewPlayerPage;
-        window.closeNewPlayerModal = () => openSection('players');
+        window.closeNewPlayerModal = () => {
+            document.getElementById('playerModal').classList.add('hidden');
+            document.getElementById('playerModal').scrollTop=0;
+        };
+
+        function generateCoachLensPlayerId() {
+            if (window.crypto && crypto.getRandomValues) {
+                const a = new Uint32Array(1);
+                crypto.getRandomValues(a);
+                return 'CL' + String(a[0] % 1000000000).padStart(9,'0');
+            }
+            return 'CL' + String(Math.floor(Math.random()*1000000000)).padStart(9,'0');
+        }
 
         window.saveNewPlayer = async () => {
             const name = document.getElementById('np_name').value.trim();
             if (!name) { notify('Player name is required.'); return; }
-            if (!auth.currentUser) { notify('You are not signed in. Please sign in again.'); return; }
+            if (!auth.currentUser) { notify('Please sign in again.'); return; }
 
+            let playerCode = generateCoachLensPlayerId();
             const player = {
+                playerId: playerCode,
                 name,
                 age: document.getElementById('np_age').value,
                 dob: document.getElementById('np_dob').value,
@@ -812,33 +791,40 @@
                 level: document.getElementById('np_level').value,
                 contact: document.getElementById('np_contact').value,
                 coachId: auth.currentUser.uid,
-                coachEmail: auth.currentUser.email || '',
-                createdAt: new Date(),
+                coachEmail: auth.currentUser.email,
+                createdAt: serverTimestamp(),
                 sessionCount: 0,
                 lastSessionAt: null
             };
 
-            const btn = document.querySelector('#newPlayerSection button[onclick="saveNewPlayer()"]');
-            const originalText = btn ? btn.innerText : 'Create Player';
             try {
-                if (btn) {
-                    btn.disabled = true;
-                    btn.innerText = 'CREATING...';
-                    btn.classList.add('opacity-60', 'cursor-not-allowed');
+                const createBtn=document.querySelector('.new-player-create');
+                if(createBtn){createBtn.disabled=true;createBtn.textContent='Creating…';}
+
+                // Very-low-probability collision check within the current coach's namespace.
+                for(let attempt=0; attempt<5; attempt++){
+                    const q=query(collection(db,'players'),
+                        where('coachId','==',auth.currentUser.uid),
+                        where('playerId','==',playerCode));
+                    const existing=await getDocs(q);
+                    if(existing.empty) break;
+                    playerCode=generateCoachLensPlayerId();
+                    player.playerId=playerCode;
                 }
+
                 const ref = await addDoc(collection(db, 'players'), player);
+                const idCard=document.getElementById('newPlayerIdCard');
+                if(idCard) idCard.textContent=playerCode;
+                notify(`Player created successfully · ${playerCode}`);
+                closeNewPlayerModal();
                 await loadPlayers();
                 await openPlayer(ref.id);
-                notify('Player created successfully.');
             } catch (err) {
-                console.error('Could not create player:', err);
-                notify('Could not create player: ' + (err.message || err));
+                console.error(err);
+                notify('Could not create player: ' + (err?.message || 'Please try again.'));
             } finally {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerText = originalText;
-                    btn.classList.remove('opacity-60', 'cursor-not-allowed');
-                }
+                const createBtn=document.querySelector('.new-player-create');
+                if(createBtn){createBtn.disabled=false;createBtn.textContent='Create Player';}
             }
         };
 
@@ -2243,6 +2229,84 @@
         @media(max-width:700px){ .report-grid { grid-template-columns:repeat(2,1fr); } }
 
         .education-security-banner{display:flex;gap:14px;align-items:flex-start;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:14px;padding:16px;margin-bottom:18px}.education-shield{font-size:25px}.education-security-banner b{display:block;color:#065f46;font-size:13px}.education-security-banner span{display:block;color:#047857;font-size:11px;line-height:1.6;margin-top:3px}.education-card{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.06)}.education-card-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.education-card h3{font-size:18px;font-weight:900;color:#0f172a;margin-top:14px}.education-card p{font-size:12px;line-height:1.6;color:#64748b;margin-top:6px;min-height:58px}.education-meta{display:flex;justify-content:space-between;gap:10px;margin-top:13px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase}.education-lock{font-size:9px;font-weight:900;color:#059669;letter-spacing:.08em}.edu-tag{font-size:9px;font-weight:800;background:#f1f5f9;color:#475569;border-radius:999px;padding:4px 7px}.education-toolbar{display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:18px}@media(max-width:700px){.education-toolbar{grid-template-columns:1fr}.education-card p{min-height:auto}}
+
+        /* ============================================================
+           COACH'S LENS — FINAL NEW PLAYER PAGE
+           ============================================================ */
+        .new-player-page{
+            position:fixed !important;
+            left:272px !important; right:0 !important; top:0 !important; bottom:0 !important;
+            z-index:95 !important;
+            width:auto !important; height:auto !important;
+            background:#f8fafc !important;
+            overflow-x:hidden !important; overflow-y:auto !important;
+            padding:30px 34px 42px !important;
+        }
+        .new-player-shell{
+            width:100% !important; max-width:1240px !important; margin:0 auto !important;
+        }
+        .new-player-header{
+            display:flex !important; justify-content:space-between !important; align-items:flex-end !important;
+            gap:24px !important; margin-bottom:22px !important;
+        }
+        .new-player-back{
+            border:0; background:transparent; color:#64748b; font-size:11px; font-weight:900;
+            text-transform:uppercase; letter-spacing:.08em; padding:0; cursor:pointer; margin-bottom:12px;
+        }
+        .new-player-eyebrow{font-size:9px;font-weight:950;letter-spacing:.22em;color:#f97316;margin-bottom:6px}
+        .new-player-title{font-size:30px;line-height:1.05;font-weight:950;color:#0f172a;margin:0}
+        .new-player-subtitle{font-size:12px;color:#64748b;margin:8px 0 0}
+        .new-player-id-card{
+            flex:0 0 300px; width:300px; background:#06111f; border-radius:16px; padding:18px 20px;
+            color:white; box-shadow:0 12px 35px rgba(15,23,42,.14);
+        }
+        .new-player-id-label{font-size:9px;letter-spacing:.18em;font-weight:950;color:#94a3b8}
+        .new-player-id-value{font-size:24px;line-height:1.15;font-weight:950;letter-spacing:.04em;color:#f97316;margin-top:6px}
+        .new-player-id-note{font-size:10px;line-height:1.45;color:#94a3b8;margin-top:7px}
+        .new-player-form-card{
+            background:white;border:1px solid #e2e8f0;border-radius:18px;padding:26px;
+            box-shadow:0 12px 40px rgba(15,23,42,.06);
+        }
+        .new-player-section-title{
+            font-size:11px;font-weight:950;letter-spacing:.14em;text-transform:uppercase;color:#0f172a;
+            padding-bottom:10px;margin:0 0 16px;border-bottom:2px solid #f1f5f9;
+        }
+        .new-player-section-title:not(:first-child){margin-top:28px}
+        .new-player-fields{
+            display:grid !important; grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+            gap:18px !important; width:100% !important; min-width:0 !important;
+        }
+        .new-player-fields>div{min-width:0 !important;width:100% !important}
+        .new-player-fields label{display:block;margin-bottom:7px;font-size:10px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#475569}
+        .new-player-fields input,.new-player-fields select{
+            display:block;width:100% !important;min-width:0 !important;max-width:100% !important;
+            height:46px;padding:0 13px;border:1px solid #cbd5e1;border-radius:10px;
+            background:#fff;color:#0f172a;font-size:13px;outline:none;
+        }
+        .new-player-fields input:focus,.new-player-fields select:focus{
+            border-color:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.12)
+        }
+        .new-player-actions{
+            display:grid !important;grid-template-columns:minmax(0,1fr) 130px !important;gap:12px !important;
+            margin-top:30px;padding-top:22px;border-top:1px solid #e2e8f0;
+        }
+        .new-player-create,.new-player-cancel{
+            min-height:48px;border:0;border-radius:11px;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.1em;cursor:pointer
+        }
+        .new-player-create{background:#f97316;color:#fff}
+        .new-player-cancel{background:#f1f5f9;color:#475569}
+        @media(max-width:900px){
+            .new-player-page{left:0 !important;padding:24px 20px 34px !important}
+            .new-player-header{align-items:flex-start !important;flex-direction:column !important}
+            .new-player-id-card{width:100%;flex-basis:auto}
+        }
+        @media(max-width:620px){
+            .new-player-page{padding:18px 14px 28px !important}
+            .new-player-title{font-size:24px}
+            .new-player-fields{grid-template-columns:1fr !important;gap:14px !important}
+            .new-player-actions{grid-template-columns:1fr !important}
+        }
+
 </style>
 </head>
 <body class="bg-slate-100 text-slate-900 font-sans">
@@ -2314,7 +2378,7 @@
             <div class="quick-label">QUICK ACTIONS</div>
 
             <div class="quick-actions">
-                <button onclick="openNewPlayerPage()" class="quick-link"><span>＋</span> Add New Player</button>
+                <button onclick="openNewPlayerModal()" class="quick-link"><span>＋</span> Add New Player</button>
                 <button onclick="openCoachingPlanner('Team Session')" class="quick-link"><span>＋</span> Team Session</button>
                 <button onclick="openCoachingPlanner('Individual Session')" class="quick-link"><span>＋</span> Individual Session</button>
                 <button onclick="openSection('matches'); setTimeout(openMatchForm,120)" class="quick-link"><span>＋</span> Add Match</button>
@@ -2417,7 +2481,7 @@
                         <h2>PLAYER DATABASE</h2>
                         <p>Profiling &amp; Technical Data</p>
                     </div>
-                    <button onclick="openNewPlayerPage()" class="primary-btn">+ New Player</button>
+                    <button onclick="openNewPlayerModal()" class="primary-btn">+ New Player</button>
                 </div>
 
                 <div class="toolbar">
@@ -2426,40 +2490,6 @@
 
                 <div class="bg-white rounded-xl shadow border overflow-hidden">
                     <div id="playersList"></div>
-                </div>
-            </div>
-
-            <!-- NEW PLAYER PAGE -->
-            <div id="newPlayerSection" class="app-section hidden">
-                <div class="section-header">
-                    <div>
-                        <button onclick="openSection('players')" class="back-btn">← Player Database</button>
-                        <h2>NEW PLAYER</h2>
-                        <p>Create a new player profile</p>
-                    </div>
-                </div>
-
-                <div class="form-card border-l-8 border-emerald-500">
-                    <span class="pro-tag">Player Profile</span>
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
-                        <div class="md:col-span-2 xl:col-span-2"><label>Player Name</label><input type="text" id="np_name" autocomplete="off"></div>
-                        <div><label>Date of Birth</label><input type="date" id="np_dob"></div>
-                        <div><label>Age</label><input type="number" id="np_age" min="0" max="100"></div>
-                        <div><label>Gender</label><select id="np_gender"><option value="">Select</option><option>Male</option><option>Female</option></select></div>
-                        <div><label>Primary Role</label><select id="np_role"><option>Batter</option><option>Bowler</option><option>All rounder</option><option>WK batter</option></select></div>
-                        <div><label>Secondary Role</label><input id="np_secondaryRole" placeholder="Optional"></div>
-                        <div><label>Batting Hand</label><select id="np_hand"><option>RH</option><option>LH</option></select></div>
-                        <div><label>Bowling Arm</label><select id="np_bowlingArm"><option value="">N/A</option><option>Right Arm</option><option>Left Arm</option></select></div>
-                        <div><label>Bowling Type</label><input id="np_bowlingType" placeholder="Fast / Spin / N/A"></div>
-                        <div><label>Batting Position</label><input id="np_battingPosition" placeholder="e.g. 1, 2, 3..."></div>
-                        <div><label>Playing Level</label><select id="np_level"><option>Beginner</option><option selected>Development</option><option>Elite</option><option>Professional</option></select></div>
-                        <div><label>Contact</label><input id="np_contact" placeholder="Phone / Email"></div>
-                    </div>
-
-                    <div class="flex flex-col sm:flex-row gap-3 mt-6 pt-5 border-t border-slate-200">
-                        <button onclick="saveNewPlayer()" class="primary-btn flex-1">Create Player</button>
-                        <button onclick="openSection('players')" class="secondary-btn flex-1">Cancel</button>
-                    </div>
                 </div>
             </div>
 
@@ -2763,6 +2793,58 @@
         </div>
     </div>
 
+    <!-- NEW PLAYER — DEDICATED FULL PAGE -->
+    <div id="playerModal" class="hidden new-player-page">
+        <div class="new-player-shell">
+            <div class="new-player-header">
+                <div>
+                    <button type="button" onclick="closeNewPlayerModal()" class="new-player-back">← Back to Player Database</button>
+                    <div class="new-player-eyebrow">PLAYER REGISTRATION</div>
+                    <h2 class="new-player-title">Create New Player</h2>
+                    <p class="new-player-subtitle">Build a complete player profile for coaching and performance tracking.</p>
+                </div>
+                <div class="new-player-id-card">
+                    <div class="new-player-id-label">PLAYER ID</div>
+                    <div id="newPlayerIdCard" class="new-player-id-value">CL•••••••••</div>
+                    <div class="new-player-id-note">Generated automatically and cannot be edited.</div>
+                </div>
+            </div>
+
+            <form id="newPlayerForm" onsubmit="event.preventDefault(); saveNewPlayer();" class="new-player-form-card">
+                <div class="new-player-section-title">Basic Profile</div>
+                <div class="new-player-fields">
+                    <div><label>Name</label><input type="text" id="np_name" required placeholder="Full player name"></div>
+                    <div><label>Date of Birth</label><input type="date" id="np_dob"></div>
+                    <div><label>Age</label><input type="number" id="np_age" min="0" max="100" placeholder="Age"></div>
+                    <div><label>Gender</label><select id="np_gender"><option value="">Select</option><option>Male</option><option>Female</option></select></div>
+                    <div><label>Contact</label><input id="np_contact" placeholder="Phone / contact details"></div>
+                </div>
+
+                <div class="new-player-section-title">Cricket Profile</div>
+                <div class="new-player-fields">
+                    <div><label>Primary Role</label><select id="np_role"><option>Batter</option><option>Bowler</option><option>All rounder</option><option>WK batter</option></select></div>
+                    <div><label>Secondary Role</label><input id="np_secondaryRole" placeholder="Optional"></div>
+                    <div><label>Batting Hand</label><select id="np_hand"><option>RH</option><option>LH</option></select></div>
+                    <div><label>Bowling Arm</label><select id="np_bowlingArm"><option value="">N/A</option><option>Right Arm</option><option>Left Arm</option></select></div>
+                    <div><label>Bowling Type</label><input id="np_bowlingType" placeholder="e.g. Right-arm fast"></div>
+                    <div><label>Batting Order</label><select id="np_battingPosition">
+                        <option value="">Select batting order</option>
+                        <option value="Opener">Opener</option>
+                        <option value="Top order">Top order</option>
+                        <option value="Middle order">Middle order</option>
+                        <option value="Lower order">Lower order</option>
+                    </select></div>
+                    <div><label>Playing Level</label><select id="np_level"><option>Beginner</option><option selected>Development</option><option>Elite</option><option>Professional</option></select></div>
+                </div>
+
+                <div class="new-player-actions">
+                    <button type="submit" class="new-player-create">Create Player</button>
+                    <button type="button" onclick="closeNewPlayerModal()" class="new-player-cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 <div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
 <div id="appErrorToast" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;max-width:420px;padding:14px 16px;border-radius:10px;background:#7f1d1d;color:#fff;font:14px/1.4 system-ui, sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25)"></div>
 <script>
@@ -2789,7 +2871,7 @@ window.addEventListener('unhandledrejection', function(e) {
                 <div><label>Short Description</label><textarea id="edu_description" rows="3" maxlength="500" placeholder="What will the coach learn from this material?"></textarea></div>
                 <div class="grid md:grid-cols-2 gap-4"><div><label>Author</label><input id="edu_author" maxlength="120"></div><div><label>Organisation / Source</label><input id="edu_source" maxlength="160"></div></div>
                 <div><label>Tags</label><input id="edu_tags" maxlength="250" placeholder="pace, mechanics, seam, workload"></div>
-                <div><label>Coach access</label><div id="edu_access" class="mt-2"></div><p class="text-[11px] text-slate-500 mt-1">Only approved, active coaches selected here can open this material.</p></div>
+                <div><label>Coach access</label><div id="edu_access" class="mt-2"></div><p class="text-[11px] text-slate-500 mt-1">Every approved, active coach can open all published learning materials.</p></div>
                 <div><label>PDF file</label><input id="edu_file" type="file" accept="application/pdf,.pdf"><p class="text-[11px] text-slate-500 mt-1">PDF only. Maximum 25 MB. Existing material can be edited without replacing its file.</p></div>
                 <div class="flex gap-2 justify-end pt-3"><button type="button" onclick="closeEducationModal()" class="secondary-btn">Cancel</button><button type="submit" class="primary-btn">Publish Securely</button></div>
             </form>
