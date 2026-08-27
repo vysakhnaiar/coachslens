@@ -6,10 +6,21 @@
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://*.firebasestorage.app https://firebasestorage.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com;">
     <title>Coach's Lens - Pro Analytics</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-    <script type="module">
+    <script>
+window.loadHtml2Pdf = function() {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (window.__html2pdfPromise) return window.__html2pdfPromise;
+  window.__html2pdfPromise = new Promise(function(resolve, reject) {
+    var s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    s.onload = function() { resolve(window.html2pdf); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return window.__html2pdfPromise;
+};
+</script>
+<script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
         import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, query, where, writeBatch, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -2308,6 +2319,13 @@
         }
 
 </style>
+
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="//www.gstatic.com">
+
+
+
+
 </head>
 <body class="bg-slate-100 text-slate-900 font-sans">
 
@@ -2883,6 +2901,9 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-slate-800 text-white"><div><b id="educationViewerTitle">Study Material</b><div id="educationViewerMeta" class="text-[10px] text-slate-400"></div></div><button onclick="closeEducationViewer()" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-bold">Close</button></div>
         <div class="h-[calc(100vh-4rem)] p-2 md:p-4"><iframe id="educationPdfFrame" title="Private coach education PDF" class="w-full h-full rounded-lg bg-slate-800" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></div>
     </div>
+
+
+
 
 </body>
 </html>
