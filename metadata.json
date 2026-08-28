@@ -1,0 +1,6 @@
+{
+  "name": "Coach's Lens - Pro Analytics",
+  "description": "Professional cricket coaching, player assessment tracking, and video analysis platform with comprehensive performance reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
