@@ -216,34 +216,14 @@
                 wrap.innerHTML = '';
                 return;
             }
-            try {
-                const snap = await getDocs(collection(db, 'users'));
-                const coaches = snap.docs.map(d => ({ id:d.id, ...d.data() }))
-                    .filter(u => u.role !== ROLE_ADMIN && u.status === 'approved' && u.active === true);
-                wrap.innerHTML = `
-                    <label class="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2">
-                        <input id="edu_all_coaches" type="checkbox" class="w-4 h-4" onchange="toggleAllEducationCoaches(this.checked)">
-                        Give access to all approved coaches
-                    </label>
-                    <div class="grid sm:grid-cols-2 gap-2 max-h-40 overflow-auto border rounded-xl p-3 bg-slate-50">
-                        ${coaches.length ? coaches.map(u => `
-                            <label class="flex items-center gap-2 text-xs text-slate-700">
-                                <input type="checkbox" name="eduCoach" value="${escapeHtml(u.id)}" ${existingIds.includes(u.id) ? 'checked' : ''} class="w-4 h-4">
-                                <span>${escapeHtml(u.name || 'Coach')} <span class="text-slate-400">(${escapeHtml(u.email || '')})</span></span>
-                            </label>`).join('') : '<p class="text-xs text-slate-500">No approved coaches available yet.</p>'}
-                    </div>`;
-                const all = coaches.length > 0 && coaches.every(u => existingIds.includes(u.id));
-                const allBox = document.getElementById('edu_all_coaches');
-                if (allBox) allBox.checked = all;
-            } catch (err) {
-                console.error(err);
-                wrap.innerHTML = '<p class="text-xs text-red-600">Could not load coach access list.</p>';
-            }
+            wrap.innerHTML = `
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                    <b>Access:</b> All approved coaches
+                    <div class="text-xs mt-1 text-emerald-700">No coach selection is required. Approved coaches will automatically have access after approval.</div>
+                </div>`;
         }
 
-        window.toggleAllEducationCoaches = (checked) => {
-            document.querySelectorAll('input[name="eduCoach"]').forEach(cb => cb.checked = checked);
-        };
+        window.toggleAllEducationCoaches = () => {};
 
         async function loadEducationMaterials() {
             const list = document.getElementById('educationList');
@@ -260,6 +240,7 @@
                     snap = await getDocs(q);
                 }
                 educationMaterialsCache = snap.docs.map(d => ({ id:d.id, ...d.data() }))
+                    .filter(m => m.status !== 'pending' && m.status !== 'rejected')
                     .sort((a,b) => String(b.createdAt?.seconds || 0).localeCompare(String(a.createdAt?.seconds || 0)));
                 filterEducationMaterials();
             } catch (err) {
@@ -297,14 +278,25 @@
         };
 
         window.openEducationUpload = async () => {
-            if (!canUploadEducation()) return notify('You do not have permission to upload study materials.');
-            const form = document.getElementById('educationForm');
-            if (form) form.reset();
-            document.getElementById('edu_id').value = '';
-            document.getElementById('educationModal').classList.remove('hidden');
-            document.getElementById('educationModal').classList.add('flex');
-            populateEducationCategories();
-            await populateEducationAccess([]);
+            try {
+                if (!canUploadEducation()) return notify('You do not have permission to upload study materials.', 'error');
+                const modal = document.getElementById('educationModal');
+                const form = document.getElementById('educationForm');
+                const idEl = document.getElementById('edu_id');
+                if (!modal || !form || !idEl) {
+                    console.error('Education upload UI is missing.', { modal, form, idEl });
+                    return notify('Upload form could not be opened. Please refresh the app.', 'error');
+                }
+                form.reset();
+                idEl.value = '';
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                populateEducationCategories();
+                await populateEducationAccess([]);
+            } catch (err) {
+                console.error('Unable to open education upload:', err);
+                notify('Unable to open the upload form. Please refresh and try again.', 'error');
+            }
         };
 
         window.closeEducationModal = () => {
@@ -332,7 +324,8 @@
 
         window.saveEducationMaterial = async (e) => {
             e.preventDefault();
-            if (!canUploadEducation()) return notify('You do not have permission to upload study materials.');
+            if (!canUploadEducation()) return notify('You do not have permission to upload study materials.', 'error');
+            const isAdmin = canManageEducation();
             const title = document.getElementById('edu_title').value.trim();
             const category = document.getElementById('edu_category').value;
             const level = document.getElementById('edu_level').value;
@@ -342,31 +335,56 @@
             const tags = document.getElementById('edu_tags').value.split(',').map(x => x.trim()).filter(Boolean).slice(0,20);
             const file = document.getElementById('edu_file').files[0];
             const id = document.getElementById('edu_id').value.trim();
-            const allowedCoachIds = [...document.querySelectorAll('input[name="eduCoach"]:checked')].map(x => x.value);
-            if (!title || !category) return notify('Title and category are required.');
-            if (!id && !file) return notify('Please select a PDF file.');
-            if (file && (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'))) return notify('Only PDF files are allowed.');
-            if (file && file.size > 25 * 1024 * 1024) return notify('PDF must be 25 MB or smaller.');
-            if (!allowedCoachIds.length) return notify('Select at least one approved coach for access.');
+            const allowedCoachIds = await getApprovedCoachIds();
+            if (!title || !category) return notify('Title and category are required.', 'error');
+            if (!id && !file) return notify('Please select a PDF file.', 'error');
+            if (file && (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'))) return notify('Only PDF files are allowed.', 'error');
+            if (file && file.size > 25 * 1024 * 1024) return notify('PDF must be 25 MB or smaller.', 'error');
+            if (id && !isAdmin) return notify('Only an administrator can edit a published material.', 'error');
+
+            const saveBtn = document.querySelector('#educationForm button[type="submit"]');
+            const originalText = saveBtn?.innerText || 'Save Material';
+            let uploadedPath = '';
             try {
+                requireSignedIn();
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = id ? 'SAVING‚Ä¶' : (isAdmin ? 'PUBLISHING‚Ä¶' : 'SUBMITTING‚Ä¶'); }
+
+                if (!isAdmin && !id) {
+                    const requestRef = doc(collection(db, 'educationMaterialRequests'));
+                    if (!file) throw new Error('Please select a PDF file.');
+                    uploadedPath = `educationRequests/${auth.currentUser.uid}/${requestRef.id}`;
+                    await uploadBytes(storageRef(storage, uploadedPath), file, { contentType:'application/pdf', cacheControl:'private, max-age=0' });
+                    await setDoc(requestRef, {
+                        title, category, level, description, author, source, tags, allowedCoachIds,
+                        storagePath: uploadedPath,
+                        status: 'pending',
+                        createdAt: serverTimestamp(),
+                        createdBy: auth.currentUser.uid,
+                        createdByEmail: auth.currentUser.email || ''
+                    });
+                    notify('Study material submitted for admin approval.');
+                    closeEducationModal();
+                    await loadEducationMaterials();
+                    await loadEducationAdminPanel();
+                    return;
+                }
+
                 const materialRef = id ? doc(db, 'educationMaterials', id) : doc(collection(db, 'educationMaterials'));
                 const oldSnap = id ? await getDoc(materialRef) : null;
                 const old = oldSnap?.exists() ? oldSnap.data() : null;
                 let storagePath = old?.storagePath || '';
                 if (file) {
-                    storagePath = `education/${auth.currentUser.uid}/${materialRef.id}.pdf`;
-                    const sref = storageRef(storage, storagePath);
-                    await uploadBytes(sref, file, { contentType:'application/pdf', cacheControl:'private, max-age=0' });
+                    storagePath = `education/${materialRef.id}`;
+                    uploadedPath = storagePath;
+                    await uploadBytes(storageRef(storage, storagePath), file, { contentType:'application/pdf', cacheControl:'private, max-age=0' });
                     if (old?.storagePath && old.storagePath !== storagePath) {
                         try { await deleteObject(storageRef(storage, old.storagePath)); } catch (_) {}
                     }
                 }
                 const data = {
                     title, category, level, description, author, source, tags,
-                    allowedCoachIds,
-                    storagePath,
-                    updatedAt: serverTimestamp(),
-                    updatedBy: auth.currentUser.uid
+                    allowedCoachIds, storagePath, status:'approved',
+                    updatedAt: serverTimestamp(), updatedBy: auth.currentUser.uid
                 };
                 if (!id) { data.createdAt = serverTimestamp(); data.createdBy = auth.currentUser.uid; }
                 await setDoc(materialRef, data, { merge:true });
@@ -374,8 +392,13 @@
                 closeEducationModal();
                 await loadEducationMaterials();
             } catch (err) {
-                console.error(err);
-                notify('Could not save the study material. Check Firebase Firestore and Storage rules.');
+                console.error('Study material save failed:', err);
+                if (uploadedPath && !isAdmin) {
+                    try { await deleteObject(storageRef(storage, uploadedPath)); } catch (_) {}
+                }
+                notify(err?.message?.includes('permission-denied') ? 'Firebase permissions blocked this upload. Update Firestore/Storage rules.' : 'Could not save the study material. Please try again.', 'error');
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = originalText; }
             }
         };
 
@@ -698,8 +721,80 @@
             try { await updateDoc(doc(db,'users',uid), { status:'rejected', active:false, revokedAt:serverTimestamp(), revokedBy:auth.currentUser.uid }); notify('Coach access revoked.'); await loadCoachApprovals(); } catch(err) { console.error(err); notify('Could not revoke access.'); }
         };
 
+        window.loadEducationPendingRequests = async function loadEducationPendingRequests() {
+            const panel = document.getElementById('educationAdminPanel');
+            if (!panel || !canManageEducation()) return;
+            try {
+                const snap = await getDocs(collection(db, 'educationMaterialRequests'));
+                const pending = snap.docs.map(d => ({ id:d.id, ...d.data() })).filter(r => r.status === 'pending');
+                const approvedUsersSnap = await getDocs(collection(db, 'users'));
+                const approvedUsers = approvedUsersSnap.docs.map(d => ({ id:d.id, ...d.data() }))
+                    .filter(u => u.role !== ROLE_ADMIN && u.status === 'approved' && u.active === true);
+                const requestHtml = `<div class="mt-6 pt-5 border-t border-slate-300"><div class="flex items-center justify-between gap-3 mb-4"><div><span class="pro-tag !bg-amber-600">STUDY MATERIALS</span><h3 class="text-lg font-black text-slate-900 mt-2">Pending Material Requests</h3><p class="text-xs text-slate-500 mt-1">Review contributor uploads before they enter the Coach Education library.</p></div><button onclick="loadEducationPendingRequests()" class="secondary-btn">Refresh</button></div>` +
+                    (pending.length ? `<div class="space-y-3">${pending.map(r => `<div class="border rounded-xl p-4 bg-white"><div class="flex flex-col lg:flex-row lg:items-start gap-4"><div class="flex-1"><div class="flex flex-wrap gap-2 items-center"><span class="status-pill partial">PENDING</span><b class="text-sm">${escapeHtml(r.title || 'Untitled material')}</b></div><p class="text-xs text-slate-500 mt-1">${escapeHtml(r.category || 'Education')} ¬∑ ${escapeHtml(r.level || 'All Levels')} ¬∑ ${escapeHtml(r.createdByEmail || 'Contributor')}</p><p class="text-xs text-slate-600 mt-2">${escapeHtml(r.description || 'No description provided.')}</p></div><div class="flex flex-wrap gap-2"><button onclick="approveEducationRequest('${r.id}')" class="primary-btn">Approve</button><button onclick="rejectEducationRequest('${r.id}')" class="secondary-btn">Reject</button></div></div></div>`).join('')}</div>` : `<div class="empty-note">No pending study material requests.</div>`) + `</div>`;
+                panel.insertAdjacentHTML('beforeend', requestHtml);
+            } catch (err) {
+                console.error('Unable to load study material requests:', err);
+                panel.insertAdjacentHTML('beforeend', '<div class="mt-6 pt-5 border-t border-slate-300"><div class="empty-note text-red-600">Unable to load pending study material requests.</div></div>');
+            }
+        };
+
+        window.approveEducationRequest = async (id) => {
+            if (!canManageEducation()) return notify('Admin access required.', 'error');
+            try {
+                const requestRef = doc(db, 'educationMaterialRequests', id);
+                const snap = await getDoc(requestRef);
+                if (!snap.exists()) return notify('Material request not found.', 'error');
+                const r = snap.data();
+                if (r.status !== 'pending') return notify('This request has already been processed.', 'error');
+                const approvedCoachIds = await getApprovedCoachIds();
+                const requestAllowedCoachIds = approvedCoachIds;
+                if (!r.storagePath) return notify('The uploaded PDF is missing.', 'error');
+
+                const approvedPath = `education/${id}`;
+                const sourceBlob = await getBlob(storageRef(storage, r.storagePath));
+                await uploadBytes(storageRef(storage, approvedPath), sourceBlob, { contentType:'application/pdf', cacheControl:'private, max-age=0' });
+
+                await setDoc(doc(db, 'educationMaterials', id), {
+                    title:r.title || '', category:r.category || 'Other', level:r.level || 'All Levels', description:r.description || '',
+                    author:r.author || '', source:r.source || '', tags:Array.isArray(r.tags) ? r.tags : [],
+                    allowedCoachIds:requestAllowedCoachIds, storagePath:approvedPath, status:'approved',
+                    createdAt:r.createdAt || serverTimestamp(), createdBy:r.createdBy || '',
+                    approvedAt:serverTimestamp(), approvedBy:auth.currentUser.uid
+                }, { merge:true });
+                await updateDoc(requestRef, { status:'approved', approvedAt:serverTimestamp(), approvedBy:auth.currentUser.uid, approvedStoragePath:approvedPath });
+                try { await deleteObject(storageRef(storage, r.storagePath)); } catch (_) {}
+                notify('Study material approved and added to the library.');
+                await loadEducationMaterials();
+                await loadEducationAdminPanel();
+            } catch (err) {
+                console.error('Approval failed:', err);
+                notify('Could not approve this material. Check Firestore and Storage permissions.', 'error');
+            }
+        };
+
+        window.rejectEducationRequest = async (id) => {
+            if (!canManageEducation()) return notify('Admin access required.', 'error');
+            if (!confirm('Reject this study material request?')) return;
+            try {
+                const requestRef = doc(db, 'educationMaterialRequests', id);
+                const snap = await getDoc(requestRef);
+                if (!snap.exists()) return notify('Material request not found.', 'error');
+                const r = snap.data();
+                if (r.storagePath) { try { await deleteObject(storageRef(storage, r.storagePath)); } catch (_) {} }
+                await updateDoc(requestRef, { status:'rejected', rejectedAt:serverTimestamp(), rejectedBy:auth.currentUser.uid });
+                notify('Study material request rejected.');
+                await loadEducationAdminPanel();
+            } catch (err) {
+                console.error('Rejection failed:', err);
+                notify('Could not reject this material.', 'error');
+            }
+        };
+
         async function loadEducationAdminPanel() {
-            if (canManageEducation()) await loadCoachApprovals();
+            if (!canManageEducation()) return;
+            await loadCoachApprovals();
+            await loadEducationPendingRequests();
         }
 
         // ============================================================
@@ -2074,6 +2169,14 @@
         window.loadCoachingSessions = loadCoachingSessions;
         window.loadMatches = loadMatches;
         window.loadEducationMaterials = loadEducationMaterials;
+        window.openEducationUpload = window.openEducationUpload;
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('educationUploadBtn')?.addEventListener('click', window.openEducationUpload);
+            }, { once:true });
+        } else {
+            document.getElementById('educationUploadBtn')?.addEventListener('click', window.openEducationUpload);
+        }
         window.populateEducationCategories = populateEducationCategories;
         window.updateHomeStats = updateHomeStats;
         window.resetCoachingForm = resetCoachingForm;
@@ -3548,7 +3651,7 @@
                         <h2>COACH EDUCATION</h2>
                         <p>Private, permission-controlled coaching study library</p>
                     </div>
-                    <button id="educationUploadBtn" onclick="openEducationUpload()" class="primary-btn hidden">+ Upload Material</button>
+                    <button id="educationUploadBtn" type="button" class="primary-btn hidden" style="position:relative;z-index:10001;pointer-events:auto">+ Upload Material</button>
                 </div>
 
                 <div class="education-security-banner">
@@ -3624,16 +3727,232 @@
                                 <option>Team Training</option>
                                 <option>Technical Correction</option>
                                 <option>Batting Session</option>
-                                <option>Bowling SesxúÃ[€r€∆æœSlxÀ≠ :íì©SZä§l¶©)y<ôåg	,	D,Ç]àb†◊ΩÈ]ﬂ£˜}î<IˇwÇ'§®‘æI`ˇ˘ÌZ"j‘E¨‡Û¸+≤Â_√¸∏˜L›3—Ñòî{-”çº‡!R …‡>‡ú¥Ÿ„"Y§™≠÷®K∆ô´6èj‘aèí◊¯∂¡ÈàÒÛvöP‹íÖAÙ≤Q7OAßä®YÃﬁ÷¢4±§FÔmÕïü=;£F(O·˝õWµÛv§…ò∫lÌVä=™|#i÷HÃ·√‹c…€⁄ûí:π¢J°Í‰]B•‹âÇñ  r;n>vâéæ÷Âïv&."ﬂ÷BÔWpG∆4rNk[‘lHªÊt∆íú“Ú)∆02⁄c=	‹f0zrº8Ô≥D K9
-≈˘˘M¸¯—_%ßä9Ø_Ω"°ræ≠ù_ä^–êH„ÚòXb(1ÎÒô˙,"cÛ»Ê‰o#°ÿI£Ôe’^Ÿ«´œøv“ø¯©”vÔ:ƒq÷L-hËó&ﬁç5PüŸ‡8é¢ì⁄˘∑‰øˇ!ÉŒ`–Ì˜ÊõÅ.`Üuåä?˙Të)ïD˘åà—Ø ƒ‡æçı+ﬂK¢Å:¢	£ôJÛerÖröLòÉR_2lΩΩxd&R #Rz[£•∫V±Ñ∫~ qæztˆ#öX∂„ﬁZh∂ﬁw;wù´No¯,!_è&YBπÁ|ˇ
-Ç÷)jh-U¥¥¢ +oãjä°∆<èEµ-›0ôrïGÿM\$b7«,‚Lí`ì`Ù¥Q™D|CÇ˘Q[∑ŒH¡sè*ÍX:>1àÇ"r9§¬∑5…Të‡£0‚≈À⁄9|4ÍfÂÁ†„ö&*†úœ∂PìèCöÚœIYOl!©'êñû('¢,‘i€ ärŒjÁ7åJ ∑N ≥°ÓÃ2K·†Û?É7ÑQº_˘Å$âÊË‰‰‰	ﬁ”πÎv>·˝€a´’<üÁ«isfˇÃ8˛†ss◊Bxêohˇ’íSÍ¸R–Õdt¸t ≠KÁîLhÏº.ÛΩ“RAè(&∞1¯√yyH…ß.kÁÑÈK*˝õô∫.dyZ1◊è
-“ â”ñ[õÔZ°™Ã1V≤H«ûú€÷0>Áv,‹Tú%u)¡Yz=˜eØä5°*∑√˛;aÊ ˙“¶3“É‰ΩU<+¢ÅÑ›[Õ˙Ÿ˙b$YÚ†|,·~K©G’dvLº˙I\Ç')ÊU“A•–C5]MD˝3ì»%™sª86V˙ë˛± îK¡πò:ilY?&!UÆO§À"ö¬8…¡*“ÎÕOù“n~"Ω˛¡∞8ñ≥GÚk*U0û9#¶¶
-Ò@±P:¿çÇ
-<a.Ÿ,πMë5Äi"Ld}çëµ€kwÔ∫Ì€Êáå%ÕNY\’¨Õ∫y6•ûgz°∂1‡£óyJñ€4öÃ0!õ˛‰Z¬?ì¶Á3…:ÀæI◊ÙFë0ã·Zr±5ía±/˙˙¢xÊúôgFæòıI0Ô˛}D!/kàtnµQàÃò:!-‰ü‘V∏©a*NÄıƒ[p[Ωååôå◊n#7∑V⁄Hêª∏(›9{†4ó93¥ç]çzŸ¸0;ûa√¯˝&É-7IXK`M¨€¨ NÇ0≥ÅïZ SI6wéﬁî⁄C91"f—ÄÈXtÙ¬µ+øÿ`îµÛç\∆7Ô∏F∂Î‰™EsÄ}•ÓîÍôãeùÊeˇÊj%p‰:¶òÚ%&VK˙º¨çcGögƒ∂%kà,â´y¥¬ΩÑ‡T–Œà∫˜Z5f “ˇ˛èíxÑ6ll∫D4;≤$:>£˙‘Fì.â3˛©ñFœa†8´ùjÂÿ®˚ß%KƒÁ¨¯¡◊Öº/&âò%∏äÑ–ÍÊ h4æ¢Øñ∏Â	$≥Å´Œ∞ŸnõœWMè†€±éeCUﬁzÏP<+ÁÖB˙uµB:√0©Z'Bg∆L~∑GVÉ
-´T¨ÎCÿlg|ŒRÑs∑ Åz¶Üá÷àv«ùØ–(wü÷cj¨€ ‹Õ<Ê|˘¯vf'À˜˜œÅq€Õe8∑F∑Áx˜Nhsjﬁ˙∂¥µ6¡ﬂU>Ké	&>RvL‚@◊∆
-|ÃvO°4GN™⁄üú+-ﬂ¢[.∞∂—πOvZÔ{›øÔn∫Ì9jÍ5Ø¡áO‰∫}˚°9Ï¥_néÕ»ï7ãh∏6IØcØs≤◊—Í#öŸ{µ¯∞ssâÛ¬7dp{u’º˘T=1êí∆lcv†ËP&=‰%ó.*-Œ“≈z¯Ç1ƒ/ nπ†sÇàëæNŒÃ€v∞6ï-µdà›(@¯±à?–î+I∞XGü±uA≈∂Zo†<VTÑö∂iÛoÂS§P\sI≠Qß¨£Ünà	2fÃ√
-ëL¿MÇæÏ$€U›0ÉEVLÊÎÿŒVXb˘ΩòÍ#ï˘I
-t|4VLeƒMŸñCîCs‹Oï+BÜ˝C"&	Pø?”v≠ÂRSÊéx±Dv}M⁄<{dn™æD®Ìp®íï.ÿt◊x¬eé@Æ üü◊ÎBì2HCÏü±Ë∞`†éŸ;"å±]f˚AcKÑq¬|ILÕ“Ó.∆ôá®ß ç(:±*Q¨èüÄGî5ﬂœàEt⁄∑-}àBnØ?Ùõmr’oCÌ≥Å`^ÍÍ⁄˙JxîÁÜ¯À¡‡%".A ä&ÆÁxêU≈öÓGgÍú>r2u∆)Á Q3øI–S¸≥®èO¿[ÒÏÿ |S?¿æÚ6ÊÇzd†RoÜ;KÄ¥F›?€Ûtπê¨≥ ±ÇVó.b¯‚Å%?Ã	≤@(üS[;ˇ˝ﬂˇ⁄Eo\‘!öí+”Q(„sr≠é÷/WkX;ﬂï…}”I9lˇ9∂ùég⁄Æî5D˛T-ÆˆHï“pIÿoiê0o1ﬁ±ì……1π§Rë1ÂX_ê71'.‘∆ˆdÉ4°ßä0îqVΩπZÅZ∂UÕ’$Wê^4=º´	Pœ,@!(9◊.1^’kKÂÇÿôó!¶+E>‡≠ºΩπ·8ª¨£ÁZL§…πŸUVZäÛ/E
-!^Ì‘ÁÎä=dNM€gÖ¶˜Äâ≈É
-‚}0ÒI°∏ÿ;:Ñ÷ø(Ôh¶ áÍÆN"M\{
-Q›¥6G™Æ≠F∞#»CM[83˚mcË¿^dYΩacñ0,.Î§üL Œ˝›ZË”πózãu‹w[-ÿØ”∫Äøôﬁ•–g>MájΩÜt"…tL!Öj?¶	8ú˜Ú…©V]ÊŸcàßúQ	_¶I ©'Rz«dTH>OÀ4ïÿn3È&Åé2Öí÷ÃÕ'2ÌÕ◊Ñƒ!¶‡œØóÑpëlLD™ì9&ŸA∂‹RüÀÄts.c⁄ÿ?˛ÊÀu˚í¥°4-¿Æf08õõÅ˘E]ó≈JÍA!©]Æ{„'÷y‹—WáVÍπjöÁcVBè∏pÔkÁMΩ™>GJDµ‘ª¥"6q70îüí5ÁÛgÿ|Ì|\üπ˜#ÒXøú÷ÊÑáÂô~iºï=¥ÑM°‘ı!ß`]ØÒ]1ôpcÛjŸN:Bx˙DoA°ëÔÃ’S-;ºòUh/?yƒR∑%ËmkÔ´Á“Ö;&|À¥‘±åD˛Ë®ÏãQƒ_∂*‚I“é}ÔÊ}MÉ≥Æ©∑M¸º›€zπ¥∆¬zÈP˝8Üºœÿπ©–çﬂläá`ám«øÀ€qpÄüﬂºz!⁄H\;vÈdÎ-¶ß5É–ÈØëäπ$PXl˛âY†–;«Î6æbä.Ó˚(ó˛˚f™˝˛œÑ~Ωãsö˛è¯√R§qæ%£â›ˇÏè€èÒæû±V,|®>,É∆	ÓEŸ_{„K|Zàﬂ÷Çıáç_ØjDw˚ok≈ÙméZ1KÔUÆyÙ’‚o„ÍuèJ$hÇΩK§(8IÓÍÒrOÄÓÅÕzà£œ+˚Õ¡oËu/ª6r‰k‰◊Ü‚x(®T∑Öî~íùCÇZÖ7√O_ÖêN˛  ˇˇ H¨K
+                                <option>Bowling Session</option>
+                                <option>Wicketkeeping Session</option>
+                                <option>Individual Skill Development</option>
+                            </select>
+                        </div>
+                        <div><label>Duration (min)</label><input type="number" id="cs_duration" value="90"></div>
+                        <div><label>Surface</label><input type="text" id="cs_surface" placeholder="Turf / Matting / Grass"></div>
+                        <div><label>Conditions</label><input type="text" id="cs_conditions" placeholder="Optional"></div>
+                        <div class="md:col-span-2">
+                            <label>Players</label>
+                            <select id="cs_player"></select>
+                            <p id="cs_player_hint" class="text-[9px] text-slate-400 mt-1">For team sessions, select a player only when needed for a player note.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OBJECTIVE -->
+                <div class="form-card">
+                    <span class="pro-tag">1 ¬∑ SESSION OBJECTIVE</span>
+                    <label>What was the objective of the session?</label>
+                    <textarea id="cs_objective" class="large-note" placeholder="What did you want the player/team to achieve today?"></textarea>
+                </div>
+
+                <!-- OBJECTIVE ACHIEVEMENT -->
+                <div class="form-card">
+                    <span class="pro-tag !bg-emerald-600">2 ¬∑ OBJECTIVE ACHIEVEMENT</span>
+                    <label>Was the objective achieved?</label>
+                    <input type="hidden" id="cs_objectiveResult" value="">
+                    <div class="achievement-grid">
+                        <button type="button" class="achievement-btn" data-value="Yes" onclick="setObjectiveResult('Yes')">Yes</button>
+                        <button type="button" class="achievement-btn" data-value="Partially" onclick="setObjectiveResult('Partially')">Partially</button>
+                        <button type="button" class="achievement-btn" data-value="No" onclick="setObjectiveResult('No')">No</button>
+                    </div>
+                    <label class="mt-3">Reason / Context</label>
+                    <textarea id="cs_objectiveReason" placeholder="Explain what led to this result..."></textarea>
+                </div>
+
+                <!-- REVIEW / OUTCOMES -->
+                <div class="form-card">
+                    <span class="pro-tag !bg-purple-600">3 ¬∑ OBSERVATIONS &amp; REVIEW</span>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label>What went well?</label>
+                            <textarea id="cs_wentWell" placeholder="Key successes, technical improvements..."></textarea>
+                        </div>
+                        <div>
+                            <label>What needs improvement?</label>
+                            <textarea id="cs_improve" placeholder="Key technical focus areas for next session..."></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label>General Session Day Note</label>
+                        <textarea id="cs_dayNote" placeholder="General observations, squad energy, drills completed..."></textarea>
+                    </div>
+                    <div class="mt-4">
+                        <label>Next Actions / Next Session Focus</label>
+                        <input type="text" id="cs_next" placeholder="Follow-up drills, match scenarios...">
+                    </div>
+                </div>
+
+                <!-- PLAYER DAY NOTES -->
+                <div class="form-card">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="pro-tag !bg-indigo-600">4 ¬∑ INDIVIDUAL PLAYER NOTES</span>
+                        <button type="button" onclick="addPlayerDayNote()" class="secondary-btn text-xs">+ Add Player Note</button>
+                    </div>
+                    <p id="noPlayerNotes" class="text-sm text-slate-500 py-3 text-center">No individual player notes added for this session yet. Click "+ Add Player Note" to record observations for specific players.</p>
+                    <div id="playerDayNotes" class="space-y-3"></div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="saveCoachingSession()" class="primary-btn !bg-emerald-600">Save Coaching Session</button>
+                    <button type="button" onclick="openSection('coaching')" class="secondary-btn">Cancel</button>
+                </div>
+            </div>
+
+            <!-- ASSESSMENT / PLAYER SESSION FORM -->
+            <div id="assessmentSection" class="app-section hidden">
+                <button type="button" onclick="cancelSessionForm()" class="back-btn mb-4">‚Üê Back to Player</button>
+                <div class="section-header">
+                    <div>
+                        <h2 id="formTitle">ASSESSMENT SESSION</h2>
+                        <p>Evaluate technical skills, match performance and training observations.</p>
+                    </div>
+                </div>
+
+                <!-- SESSION METADATA -->
+                <div class="form-card">
+                    <span class="pro-tag !bg-blue-600">Session Context</span>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div><label>Date</label><input type="date" id="sessionDate"></div>
+                        <div>
+                            <label>Session Type</label>
+                            <select id="sessionType">
+                                <option>Training</option>
+                                <option>Match</option>
+                                <option>Net Session</option>
+                                <option>Skill Assessment</option>
+                            </select>
+                        </div>
+                        <div><label>Duration (min)</label><input type="number" id="sessionDuration" value="60"></div>
+                        <div><label>Surface</label><input type="text" id="sessionSurface" placeholder="Turf / Grass / Matting"></div>
+                        <div class="col-span-2"><label>Conditions</label><input type="text" id="sessionConditions" placeholder="Weather, lighting, pitch state..."></div>
+                        <div class="col-span-2"><label>Objective</label><input type="text" id="sessionObjective" placeholder="Key objective for this session..."></div>
+                    </div>
+                </div>
+
+                <!-- TECHNICAL GRIDS (DYNAMICALLY POPULATED) -->
+                <div id="dynamicSections" class="space-y-4"></div>
+
+                <!-- COACHING INTERVENTION & SUMMARY -->
+                <div class="form-card mt-4">
+                    <span class="pro-tag !bg-amber-600">Coaching Notes &amp; Interventions</span>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label>Baseline Observed</label>
+                            <textarea id="sessionBaseline" placeholder="Initial technical faults or state observed..."></textarea>
+                        </div>
+                        <div>
+                            <label>Intervention / Drills Used</label>
+                            <textarea id="sessionIntervention" placeholder="Cues, drills, video feedback given..."></textarea>
+                        </div>
+                        <div>
+                            <label>Player Response</label>
+                            <textarea id="sessionResponse" placeholder="How did the player adapt to the cue?"></textarea>
+                        </div>
+                        <div>
+                            <label>Outcome / Progress</label>
+                            <textarea id="sessionOutcome" placeholder="Observable technical change or execution..."></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label>Next Session Focus</label>
+                        <input type="text" id="sessionNextAction" placeholder="Focus area for next session...">
+                    </div>
+                    <div class="mt-4">
+                        <label>Performance Summary / General Notes</label>
+                        <textarea id="pSummary" class="large-note" placeholder="Comprehensive summary of player performance..."></textarea>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="saveSession()" class="primary-btn !bg-emerald-600">Save Assessment</button>
+                    <button type="button" onclick="cancelSessionForm()" class="secondary-btn">Cancel</button>
+                </div>
+            </div>
+
+            <!-- EDUCATION UPLOAD MODAL -->
+            <div id="educationModal" class="modal-backdrop hidden">
+                <div class="modal-dialog max-w-2xl w-full">
+                    <div class="modal-header">
+                        <h3 class="text-lg font-bold text-white">Upload Study Material</h3>
+                        <button type="button" onclick="closeEducationModal()" class="text-slate-400 hover:text-white text-xl font-bold">‚úï</button>
+                    </div>
+                    <form id="educationForm" onsubmit="saveEducationMaterial(event)" class="space-y-4 p-5">
+                        <input type="hidden" id="edu_id" value="">
+                        <div>
+                            <label>Title *</label>
+                            <input type="text" id="edu_title" required placeholder="e.g., Fast Bowling Biomechanics & Action Alignment">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label>Category *</label>
+                                <select id="edu_category" required></select>
+                            </div>
+                            <div>
+                                <label>Target Level</label>
+                                <select id="edu_level">
+                                    <option>All Levels</option>
+                                    <option>Foundation</option>
+                                    <option>Intermediate</option>
+                                    <option>Advanced / High Performance</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label>Author / Source Coach</label>
+                                <input type="text" id="edu_author" placeholder="e.g. Lead Academy Coach">
+                            </div>
+                            <div>
+                                <label>Source Reference / Organization</label>
+                                <input type="text" id="edu_source" placeholder="e.g. ICC / ECB / Academy Guide">
+                            </div>
+                        </div>
+                        <div>
+                            <label>Tags (comma separated)</label>
+                            <input type="text" id="edu_tags" placeholder="pace, release, wrist position, biomechanics">
+                        </div>
+                        <div>
+                            <label>Description &amp; Study Guide</label>
+                            <textarea id="edu_description" rows="4" placeholder="Brief outline, coaching cues and learning outcomes..."></textarea>
+                        </div>
+                        <div>
+                            <label>PDF Document</label>
+                            <input type="file" id="edu_file" accept="application/pdf">
+                        </div>
+                        <div id="edu_access" class="space-y-2"></div>
+                        <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                            <button type="button" onclick="closeEducationModal()" class="secondary-btn">Cancel</button>
+                            <button type="submit" class="primary-btn">Save Material</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- EDUCATION PDF VIEWER -->
+            <div id="educationViewer" class="modal-backdrop hidden">
+                <div class="modal-dialog max-w-5xl w-full h-[90vh] flex flex-col">
+                    <div class="modal-header flex justify-between items-center">
+                        <div>
+                            <h3 id="educationViewerTitle" class="text-lg font-bold text-white">Study Material Viewer</h3>
+                            <p id="educationViewerMeta" class="text-xs text-slate-400"></p>
+                        </div>
+                        <button type="button" onclick="closeEducationViewer()" class="text-slate-400 hover:text-white text-xl font-bold">‚úï</button>
+                    </div>
+                    <div class="flex-1 bg-slate-900 overflow-hidden relative">
+                        <iframe id="educationPdfFrame" class="w-full h-full border-0" title="PDF Document Viewer"></iframe>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- /dashboard-container -->
+    </div> <!-- /app-interface -->
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="appToast" class="app-toast"></div>
+</body>
+</html>
