@@ -1,16 +1,44 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function signedIn() {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn()
+        && request.auth.uid == "F0BCmUCVZJMuYAMjiGbpwTFlPfS2";
+    }
+
+    function userDoc() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+    }
+
+    function isApprovedCoach() {
+      return signedIn()
+        && userDoc().status == "approved"
+        && userDoc().active == true;
+    }
+
+    function isContributor() {
+      return signedIn()
+        && userDoc().role == "contributor"
+        && userDoc().status == "approved"
+        && userDoc().active == true;
+    }
+
     function ownsDocument() {
-      return signedIn() && resource.data.coachId == request.auth.uid;
+      return signedIn()
+        && resource.data.coachId == request.auth.uid;
     }
 
     function createsOwnedDocument() {
-      return signedIn() && request.resource.data.coachId == request.auth.uid;
+      return signedIn()
+        && request.resource.data.coachId == request.auth.uid;
     }
 
     function keepsOwnership() {
@@ -21,13 +49,22 @@ service cloud.firestore {
 
     function ownsPlayer(playerId) {
       return signedIn()
-        && get(/databases/$(database)/documents/players/$(playerId)).data.coachId == request.auth.uid;
+        && get(
+          /databases/$(database)/documents/players/$(playerId)
+        ).data.coachId == request.auth.uid;
     }
 
-    // Player records and every nested session/note belong to one coach.
+
+    // =========================
+    // PLAYERS
+    // =========================
+
     match /players/{playerId} {
+
       allow read, delete: if ownsDocument();
+
       allow create: if createsOwnedDocument();
+
       allow update: if keepsOwnership();
 
       match /{document=**} {
@@ -35,20 +72,113 @@ service cloud.firestore {
       }
     }
 
-    // Top-level coaching and match records are likewise private to their owner.
+
+    // =========================
+    // COACHING SESSIONS
+    // =========================
+
     match /coachingSessions/{sessionId} {
+
       allow read, delete: if ownsDocument();
+
       allow create: if createsOwnedDocument();
+
       allow update: if keepsOwnership();
     }
+
+
+    // =========================
+    // MATCHES
+    // =========================
 
     match /matches/{matchId} {
+
       allow read, delete: if ownsDocument();
+
       allow create: if createsOwnedDocument();
+
       allow update: if keepsOwnership();
     }
 
-    // Every unlisted collection is denied by default.
+
+    // =========================
+    // USERS / COACH APPROVAL
+    // =========================
+
+    match /users/{userId} {
+
+      // Admin can see every registered coach.
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+
+      // New registration creates ONLY its own pending account.
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.status == "pending"
+        && request.resource.data.active == false;
+
+      // Admin can approve/reject/update any user.
+      // A user can update only their own document.
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == userId
+        );
+
+      // Only admin can delete user records.
+      allow delete: if isAdmin();
+    }
+
+
+    // =========================
+    // EDUCATION MATERIALS
+    // =========================
+
+    match /educationMaterials/{materialId} {
+
+      // Admin can read everything.
+      allow read: if isAdmin()
+
+        // Approved coaches can read approved materials
+        // that are assigned to them.
+        || (
+          isApprovedCoach()
+          && resource.data.status == "approved"
+          && request.auth.uid in resource.data.allowedCoachIds
+        );
+
+      // Only admin manages published education materials.
+      allow create, update, delete: if isAdmin();
+    }
+
+
+    // =========================
+    // EDUCATION MATERIAL REQUESTS
+    // =========================
+
+    match /educationMaterialRequests/{requestId} {
+
+      // Contributor creates their own pending request.
+      allow create: if isContributor()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == "pending";
+
+      // Admin can see all requests.
+      // Creator can see their own request.
+      allow read: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.createdBy == request.auth.uid
+        );
+
+      // Only admin approves/rejects requests.
+      allow update, delete: if isAdmin();
+    }
+
+
+    // =========================
+    // DEFAULT DENY
+    // =========================
+
     match /{document=**} {
       allow read, write: if false;
     }
