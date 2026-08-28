@@ -13,7 +13,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { initializeAppCheck, ReCaptchaEnterpriseProvider, CustomProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
         import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, query, where, writeBatch, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getStorage, ref as storageRef, uploadBytes, getBlob, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+        import { getStorage, ref as storageRef, uploadBytes, getBlob, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -426,17 +426,17 @@
             const m = educationMaterialsCache.find(x => x.id === id);
             if (!m?.storagePath) return notify('PDF file is not available.');
             try {
-                const blob = await getBlob(storageRef(storage, m.storagePath));
-                const url = URL.createObjectURL(new Blob([blob], { type:'application/pdf' }));
+                const url = await getDownloadURL(storageRef(storage, m.storagePath));
                 const frame = document.getElementById('educationPdfFrame');
                 frame.src = url;
-                frame.dataset.objectUrl = url;
+                frame.removeAttribute('sandbox');
+                frame.dataset.objectUrl = '';
                 document.getElementById('educationViewerTitle').innerText = m.title || 'Study Material';
                 document.getElementById('educationViewerMeta').innerText = `${m.category || 'Education'} · ${m.level || 'General'}${m.author ? ' · ' + m.author : ''}`;
                 document.getElementById('educationViewer').classList.remove('hidden');
             } catch (err) {
                 console.error(err);
-                notify('Unable to open this PDF. You may not have access or Firebase Storage rules may still be locked.');
+                notify('Unable to open this PDF. Please check your Firebase Storage access.');
             }
         };
 
