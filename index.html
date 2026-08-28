@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
-    <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://*.firebasestorage.app https://firebasestorage.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://*.firebasestorage.app https://firebasestorage.googleapis.com https://www.google.com/recaptcha/ https://recaptcha.google.com/; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com;">
     <title>Coach's Lens - Pro Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
+        import { initializeAppCheck, ReCaptchaEnterpriseProvider, CustomProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
         import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, query, where, writeBatch, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref as storageRef, uploadBytes, getBlob, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -27,10 +27,29 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        const appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaEnterpriseProvider('6LeuQJEtAAAAAN-noLP8fhazrCPIrQMbWcYU9dIN'),
-            isTokenAutoRefreshEnabled: true
-        });
+        let appCheck = null;
+        try {
+            const isLocalOrDev = ['localhost', '127.0.0.1'].includes(location.hostname) || 
+                                 location.hostname.endsWith('.run.app') || 
+                                 location.hostname.includes('ais-') || 
+                                 location.hostname.includes('webcontainer');
+            const isProdDomain = location.hostname === 'coach-s-lens.web.app' || 
+                                 location.hostname === 'coach-s-lens.firebaseapp.com';
+
+            if (isLocalOrDev) {
+                // Enable debug mode for AppCheck in development & preview sandboxes
+                self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+            }
+
+            if (isProdDomain && typeof ReCaptchaEnterpriseProvider !== 'undefined') {
+                appCheck = initializeAppCheck(app, {
+                    provider: new ReCaptchaEnterpriseProvider('6LeuQJEtAAAAAN-noLP8fhazrCPIrQMbWcYU9dIN'),
+                    isTokenAutoRefreshEnabled: true
+                });
+            }
+        } catch (err) {
+            console.info('AppCheck initialization handled safely for current environment:', err);
+        }
         const db = getFirestore(app);
         const auth = getAuth(app);
         const storage = getStorage(app);
@@ -490,19 +509,21 @@
             const latest=sessionsCache[0], previous=sessionsCache[1], score=getSessionScore(latest), prev=previous?getSessionScore(previous):null;
             const delta=(score!=null&&prev!=null)?score-prev:null;
             const weak=getWeaknesses(latest);
-            box.innerHTML=`<div class="p-5">
-                <div class="flex justify-between items-center mb-4"><div><p class="text-[9px] uppercase font-black text-slate-400">Latest assessment</p><p class="text-xs font-bold">${formatDateDisplay(latest.date)}</p></div>
-                ${delta==null?'':`<span class="text-[10px] font-black ${delta>=0?'text-emerald-600':'text-red-600'}">${delta>=0?'+':''}${delta}% vs previous</span>`}</div>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <div class="bg-slate-50 rounded-xl p-3 border"><p class="text-[9px] uppercase font-black text-slate-400">Overall</p><p class="text-xl font-black ${score>=80?'text-emerald-600':score>=60?'text-amber-600':'text-red-600'}">${score==null?'—':score+'%'}</p></div>
+            box.innerHTML=`<div class="p-4 sm:p-5">
+                <div class="flex justify-between items-center mb-3">
+                    <div><p class="text-[9px] uppercase font-black text-slate-400 tracking-wider">Latest assessment</p><p class="text-xs font-bold text-white">${formatDateDisplay(latest.date)}</p></div>
+                    ${delta==null?'':`<span class="text-[10px] font-black px-2 py-0.5 rounded ${delta>=0?'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60':'bg-red-950/80 text-red-400 border border-red-800/60'}">${delta>=0?'+':''}${delta}% vs previous</span>`}
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
+                    <div class="stat-card"><span class="text-[9px] uppercase font-black text-slate-400">Overall</span><b class="text-lg sm:text-xl font-black ${score>=80?'!text-emerald-400':score>=60?'!text-amber-400':'!text-red-400'}">${score==null?'—':score+'%'}</b></div>
                     ${[['Batting','bat_grip'],['Bowling','bowling'],['Wicketkeeping','wk'],['Fielding','fielding']].map(([label,key])=>{
                         const sec=SECTIONS.find(x=>x.key===key); if(!sec||!sec.show(latest.role)) return '';
                         const vals=sec.fields.map(f=>Number(latest[f.id+'_score'])).filter(n=>n>=1&&n<=5); const sc=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*20):null;
-                        return `<div class="bg-slate-50 rounded-xl p-3 border"><p class="text-[9px] uppercase font-black text-slate-400">${label}</p><p class="text-xl font-black ${sc>=80?'text-emerald-600':sc>=60?'text-amber-600':'text-red-600'}">${sc==null?'—':sc+'%'}</p></div>`;
+                        return `<div class="stat-card"><span class="text-[9px] uppercase font-black text-slate-400">${label}</span><b class="text-lg sm:text-xl font-black ${sc>=80?'!text-emerald-400':sc>=60?'!text-amber-400':'!text-red-400'}">${sc==null?'—':sc+'%'}</b></div>`;
                     }).join('')}
                 </div>
-                <div class="mt-4 pt-3 border-t"><p class="text-[9px] uppercase font-black text-slate-400 mb-2">Development priorities</p>
-                ${weak.length?weak.map(x=>`<span class="inline-block mr-1 mb-1 px-2 py-1 rounded-full bg-red-50 text-red-600 text-[9px] font-black">${escapeHtml(x)}</span>`).join(''):'<span class="text-xs text-emerald-600 font-bold">No major priorities flagged.</span>'}</div>
+                <div class="mt-3.5 pt-3 border-t border-slate-800"><p class="text-[9px] uppercase font-black text-slate-400 mb-2">Development priorities</p>
+                ${weak.length?weak.map(x=>`<span class="inline-block mr-1 mb-1 px-2 py-0.5 rounded bg-red-950/70 border border-red-800/50 text-red-300 text-[9px] font-black">${escapeHtml(x)}</span>`).join(''):'<span class="text-xs text-emerald-400 font-bold">No major priorities flagged.</span>'}</div>
             </div>`;
         }
 
@@ -592,6 +613,9 @@
             return { ok:true, profile:{id:snap.id,...profile, emailVerified:true} };
         }
 
+        
+        
+
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
                 document.getElementById('login-screen').classList.remove('hidden');
@@ -620,8 +644,10 @@
                 document.getElementById('app-interface').classList.remove('hidden');
                 const coachEmailLabel = document.getElementById('coachEmailLabel');
                 if (coachEmailLabel) coachEmailLabel.innerText = `${user.email || ''}${currentUserProfile?.role ? ' · ' + String(currentUserProfile.role).toUpperCase() : ''}`;
-                openSection('players');
-                await loadPlayers();
+                showHome();
+                loadPlayers();
+                loadCoachingSessions();
+                loadMatches();
             } catch (err) {
                 console.error(err);
                 await signOut(auth);
@@ -632,7 +658,7 @@
         // ============================================================
         // ADMIN: COACH APPROVALS
         // ============================================================
-        async function loadCoachApprovals() {
+        window.loadCoachApprovals = async function loadCoachApprovals() {
             const panel = document.getElementById('educationAdminPanel');
             if (!panel || !canManageEducation()) return;
             panel.classList.remove('hidden');
@@ -686,9 +712,22 @@
             const btn=document.querySelector(`.side-link[data-side="${key}"]`);
             if(btn)btn.classList.add('active');
         }
-        window.toggleSidebar = () => document.getElementById('eliteSidebar').classList.toggle('open');
+        window.toggleSidebar = (force) => {
+            const sb = document.getElementById('eliteSidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (!sb) return;
+            const isOpen = typeof force === 'boolean' ? force : !sb.classList.contains('open');
+            sb.classList.toggle('open', isOpen);
+            if (backdrop) backdrop.classList.toggle('active', isOpen);
+        };
+
+        window.closeMobileSidebar = function closeMobileSidebar() {
+            document.getElementById('eliteSidebar')?.classList.remove('open');
+            document.getElementById('sidebarBackdrop')?.classList.remove('active');
+        };
 
         window.showHome = () => {
+            closeMobileSidebar();
             document.querySelectorAll('.app-section').forEach(x => x.classList.add('hidden'));
             setSideActive('home');
             document.getElementById('homeView').classList.remove('hidden');
@@ -696,6 +735,11 @@
         };
 
         window.openSection = (name) => {
+            closeMobileSidebar();
+            if (name === 'home') {
+                showHome();
+                return;
+            }
             document.getElementById('homeView').classList.add('hidden');
             setSideActive(name);
             document.querySelectorAll('.app-section').forEach(x => x.classList.add('hidden'));
@@ -730,7 +774,11 @@
                 const q = query(collection(db, "players"), where("coachId", "==", auth.currentUser.uid));
                 const snap = await getDocs(q);
                 allPlayers = [];
-                snap.forEach(d => allPlayers.push({ id: d.id, ...d.data() }));
+                snap.forEach(d => {
+                    const data = d.data();
+                    const pCode = data.playerId || getPlayerIdCode({ id: d.id, ...data });
+                    allPlayers.push({ id: d.id, ...data, playerId: pCode });
+                });
                 allPlayers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                 renderPlayerList(allPlayers);
             } catch (err) {
@@ -738,79 +786,236 @@
             }
         }
 
+        let pendingPlayerId = '';
+
+        window.generatePlayerId = () => {
+            const digits = Math.floor(100000000 + Math.random() * 900000000).toString();
+            return 'CL' + digits;
+        };
+
+        window.getPlayerIdCode = (player) => {
+            if (player && player.playerId) return player.playerId;
+            if (!player) return 'CL000000000';
+            let hash = 0;
+            const str = (player.id || '') + (player.name || 'player');
+            for (let i = 0; i < str.length; i++) {
+                hash = (hash * 31 + str.charCodeAt(i)) % 900000000;
+            }
+            const digits = Math.abs(hash + 100000000).toString();
+            return 'CL' + digits;
+        };
+
+        window.copyPlayerIdBadge = () => {
+            if (!currentPlayer) return;
+            const pCode = getPlayerIdCode(currentPlayer);
+            navigator.clipboard?.writeText(pCode).then(() => {
+                notify('Player ID ' + pCode + ' copied to clipboard!');
+            }).catch(() => {
+                notify('Player ID: ' + pCode);
+            });
+        };
+
+        window.copyPendingPlayerId = () => {
+            if (!pendingPlayerId) return;
+            navigator.clipboard?.writeText(pendingPlayerId).then(() => {
+                notify('Player ID ' + pendingPlayerId + ' copied to clipboard!');
+            }).catch(() => {
+                notify('Player ID: ' + pendingPlayerId);
+            });
+        };
+
         function renderPlayerList(list) {
             const listEl = document.getElementById('playersList');
+            const countEl = document.getElementById('playerCountBadge');
+            if (countEl) countEl.innerText = `${list.length} Player${list.length === 1 ? '' : 's'}`;
+
             if (list.length === 0) {
-                listEl.innerHTML = '<p class="p-8 text-center text-xs text-slate-400 italic">No players yet. Add your first player to get started.</p>';
+                listEl.innerHTML = `
+                    <div class="p-10 text-center flex flex-col items-center justify-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xl font-bold">👤</div>
+                        <p class="text-xs text-slate-300 font-bold">No players found matching your criteria</p>
+                        <p class="text-[10px] text-slate-500 max-w-xs">Try adjusting your search terms or add a new player to your squad database.</p>
+                        <button onclick="openNewPlayerPage()" class="primary-btn mt-2">+ Add First Player</button>
+                    </div>`;
                 return;
             }
-            listEl.innerHTML = list.map(p => `
-                <div class="player-card" onclick="openPlayer('${p.id}')">
-                    <div>
-                        <p class="font-bold text-sm text-slate-800">${escapeHtml(p.name || 'Unnamed')}</p>
-                        <p class="text-[10px] text-emerald-600 uppercase font-black tracking-tighter">${escapeHtml(p.role || '')} · ${escapeHtml(p.hand || '')} · ${escapeHtml(p.level || '')}</p>
+
+            const roleBadges = {
+                'Batter': 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+                'Bowler': 'bg-rose-900/40 text-rose-400 border-rose-700/50',
+                'All rounder': 'bg-emerald-900/40 text-emerald-400 border-emerald-700/50',
+                'WK batter': 'bg-amber-900/40 text-amber-400 border-amber-700/50'
+            };
+
+            listEl.innerHTML = list.map(p => {
+                const initials = (p.name || 'P').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+                const badgeClass = roleBadges[p.role] || 'bg-slate-800 text-slate-300 border-slate-700';
+                const pCode = getPlayerIdCode(p);
+                return `
+                <div class="player-card group" onclick="openPlayer('${p.id}')">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-xs text-emerald-400 shrink-0 group-hover:border-emerald-500/50 group-hover:bg-slate-750 transition-colors">
+                            ${p.jersey ? `<span class="text-[10px] text-slate-400 font-bold">#${escapeHtml(p.jersey)}</span>` : initials}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="font-black text-sm text-white group-hover:text-emerald-400 transition-colors truncate">${escapeHtml(p.name || 'Unnamed')}</p>
+                                <span class="font-mono text-[9px] text-[#F97316] font-bold bg-orange-950/40 px-1.5 py-0.5 rounded border border-orange-800/50">${escapeHtml(pCode)}</span>
+                                <span class="text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider ${badgeClass}">${escapeHtml(p.role || 'Player')}</span>
+                                ${p.level ? `<span class="text-[8px] font-bold text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/50">${escapeHtml(p.level)}</span>` : ''}
+                            </div>
+                            <p class="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                                ${p.hand || 'RH'} Bat ${p.bowlingArm || p.bowlingType ? `· ${escapeHtml(p.bowlingArm || '')} ${escapeHtml(p.bowlingType || '')}` : ''} ${p.age ? `· ${escapeHtml(p.age)} yrs` : ''}
+                            </p>
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold text-slate-500">${p.sessionCount || 0} session${(p.sessionCount || 0) === 1 ? '' : 's'}</p>
-                        <p class="text-[9px] text-slate-400">${p.lastSessionAt ? formatDateDisplay(p.lastSessionAt) : 'No sessions yet'}</p>
+                    <div class="text-right shrink-0 pl-3">
+                        <div class="flex items-center justify-end gap-1 text-[11px] font-black text-emerald-400">
+                            <span>${p.sessionCount || 0}</span>
+                            <span class="text-[9px] text-slate-400 font-semibold uppercase">session${(p.sessionCount || 0) === 1 ? '' : 's'}</span>
+                        </div>
+                        <p class="text-[9px] text-slate-500 mt-0.5 font-medium">${p.lastSessionAt ? formatDateDisplay(p.lastSessionAt) : 'No assessments'}</p>
                     </div>
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
 
-        window.filterPlayers = (term) => {
-            term = (term || '').trim().toLowerCase();
-            const filtered = !term ? allPlayers : allPlayers.filter(p => (p.name || '').toLowerCase().includes(term));
+        window.filterPlayers = () => {
+            const term = (document.getElementById('searchBox')?.value || '').trim().toLowerCase();
+            const roleFilter = document.getElementById('playerRoleFilter')?.value || '';
+            const levelFilter = document.getElementById('playerLevelFilter')?.value || '';
+            
+            const filtered = allPlayers.filter(p => {
+                const pCode = getPlayerIdCode(p).toLowerCase();
+                const matchName = !term || (p.name || '').toLowerCase().includes(term) || (p.contact || '').toLowerCase().includes(term) || (p.jersey && p.jersey.includes(term)) || pCode.includes(term);
+                const matchRole = !roleFilter || p.role === roleFilter;
+                const matchLevel = !levelFilter || p.level === levelFilter;
+                return matchName && matchRole && matchLevel;
+            });
             renderPlayerList(filtered);
         };
 
         // ============================================================
-        // NEW PLAYER PAGE
+        // NEW PLAYER PAGE & PROFILE MANAGEMENT
         // ============================================================
+        window.calculateAgeFromDob = (dobInputId, ageTargetId) => {
+            const dobEl = document.getElementById(dobInputId);
+            const ageEl = document.getElementById(ageTargetId);
+            if (!dobEl || !ageEl || !dobEl.value) return;
+            const birthDate = new Date(dobEl.value);
+            if (isNaN(birthDate.getTime())) return;
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            if (age >= 0 && age <= 100) {
+                ageEl.value = age;
+            }
+        };
+
+        window.normalizeBattingPosition = (pos) => {
+            if (!pos) return 'Top order';
+            const lower = String(pos).toLowerCase();
+            if (lower.includes('opener') || lower.includes('open') || lower === '1' || lower === '2' || lower === '1-2') return 'Opener';
+            if (lower.includes('top') || lower === '3' || lower === '4' || lower === '3-5') return 'Top order';
+            if (lower.includes('middle') || lower === '5' || lower === '6' || lower === '4-6') return 'Middle order';
+            if (lower.includes('lower') || lower.includes('tail') || lower.includes('finisher') || lower === '7' || lower === '8' || lower === '9' || lower === '10' || lower === '11' || lower === '8-11') return 'Lower order';
+            return pos;
+        };
+
+        window.onRoleChange = (prefix) => {
+            const roleEl = document.getElementById(prefix + '_role');
+            const bowlingContainer = document.getElementById(prefix + '_bowling_container');
+            const bowlingArmEl = document.getElementById(prefix + '_bowlingArm');
+            const bowlingTypeEl = document.getElementById(prefix + '_bowlingType');
+            const battingPosEl = document.getElementById(prefix + '_battingPosition');
+            if (!roleEl) return;
+            const role = roleEl.value;
+
+            if (role === 'WK batter') {
+                if (bowlingContainer) bowlingContainer.classList.add('hidden');
+                if (bowlingArmEl) bowlingArmEl.value = 'N/A';
+                if (bowlingTypeEl) bowlingTypeEl.value = 'N/A';
+            } else {
+                if (bowlingContainer) bowlingContainer.classList.remove('hidden');
+                if (role === 'Bowler') {
+                    if (battingPosEl && (!battingPosEl.value || battingPosEl.value === 'Top order')) {
+                        battingPosEl.value = 'Lower order';
+                    }
+                    if (bowlingArmEl && bowlingArmEl.value === 'N/A') bowlingArmEl.value = 'Right Arm';
+                    if (bowlingTypeEl && bowlingTypeEl.value === 'N/A') bowlingTypeEl.value = '';
+                } else if (role === 'All rounder') {
+                    if (bowlingArmEl && bowlingArmEl.value === 'N/A') bowlingArmEl.value = 'Right Arm';
+                    if (bowlingTypeEl && bowlingTypeEl.value === 'N/A') bowlingTypeEl.value = '';
+                } else if (role === 'Batter') {
+                    if (bowlingArmEl && bowlingArmEl.value === 'N/A') bowlingArmEl.value = 'Right Arm';
+                }
+            }
+        };
+
         window.openNewPlayerPage = () => {
+            pendingPlayerId = generatePlayerId();
+            const displayFullEl = document.getElementById('np_display_player_id_full');
+            if (displayFullEl) displayFullEl.innerText = pendingPlayerId;
+
             const fields = {
                 np_name: '',
+                np_jersey: '',
                 np_dob: '',
                 np_age: '',
                 np_gender: '',
                 np_role: 'Batter',
                 np_secondaryRole: '',
                 np_hand: 'RH',
-                np_bowlingArm: '',
+                np_bowlingArm: 'Right Arm',
                 np_bowlingType: '',
-                np_battingPosition: '',
+                np_battingPosition: 'Top order',
                 np_level: 'Development',
-                np_contact: ''
+                np_contact: '',
+                np_emergencyContact: '',
+                np_notes: ''
             };
             Object.entries(fields).forEach(([id, value]) => {
                 const el = document.getElementById(id);
                 if (el) el.value = value;
             });
+            onRoleChange('np');
             openSection('newPlayer');
             setTimeout(() => document.getElementById('np_name')?.focus(), 50);
         };
 
-        // Backwards-compatible name so any existing quick actions still work.
+        // Backwards-compatible aliases
         window.openNewPlayerModal = window.openNewPlayerPage;
         window.closeNewPlayerModal = () => openSection('players');
 
         window.saveNewPlayer = async () => {
             const name = document.getElementById('np_name').value.trim();
-            if (!name) { notify('Player name is required.'); return; }
+            if (!name) { notify('Player name is required.'); document.getElementById('np_name')?.focus(); return; }
             if (!auth.currentUser) { notify('You are not signed in. Please sign in again.'); return; }
 
+            const finalPlayerId = pendingPlayerId || generatePlayerId();
+            const role = document.getElementById('np_role')?.value || 'Batter';
+            const isWk = role === 'WK batter';
+
             const player = {
+                playerId: finalPlayerId,
                 name,
-                age: document.getElementById('np_age').value,
-                dob: document.getElementById('np_dob').value,
-                gender: document.getElementById('np_gender').value,
-                role: document.getElementById('np_role').value,
-                secondaryRole: document.getElementById('np_secondaryRole').value,
-                hand: document.getElementById('np_hand').value,
-                bowlingArm: document.getElementById('np_bowlingArm').value,
-                bowlingType: document.getElementById('np_bowlingType').value,
-                battingPosition: document.getElementById('np_battingPosition').value,
-                level: document.getElementById('np_level').value,
-                contact: document.getElementById('np_contact').value,
+                jersey: document.getElementById('np_jersey')?.value?.trim() || '',
+                age: document.getElementById('np_age')?.value || '',
+                dob: document.getElementById('np_dob')?.value || '',
+                gender: document.getElementById('np_gender')?.value || '',
+                role: role,
+                secondaryRole: document.getElementById('np_secondaryRole')?.value || '',
+                hand: document.getElementById('np_hand')?.value || 'RH',
+                bowlingArm: isWk ? 'N/A' : (document.getElementById('np_bowlingArm')?.value || 'N/A'),
+                bowlingType: isWk ? 'N/A' : (document.getElementById('np_bowlingType')?.value || ''),
+                battingPosition: document.getElementById('np_battingPosition')?.value || 'Top order',
+                level: document.getElementById('np_level')?.value || 'Development',
+                contact: document.getElementById('np_contact')?.value || '',
+                emergencyContact: document.getElementById('np_emergencyContact')?.value || '',
+                notes: document.getElementById('np_notes')?.value || '',
                 coachId: auth.currentUser.uid,
                 coachEmail: auth.currentUser.email || '',
                 createdAt: new Date(),
@@ -819,24 +1024,24 @@
             };
 
             const btn = document.querySelector('#newPlayerSection button[onclick="saveNewPlayer()"]');
-            const originalText = btn ? btn.innerText : 'Create Player';
+            const originalContent = btn ? btn.innerHTML : 'Create Player';
             try {
                 if (btn) {
                     btn.disabled = true;
-                    btn.innerText = 'CREATING...';
+                    btn.innerText = 'Creating Player...';
                     btn.classList.add('opacity-60', 'cursor-not-allowed');
                 }
                 const ref = await addDoc(collection(db, 'players'), player);
                 await loadPlayers();
                 await openPlayer(ref.id);
-                notify('Player created successfully.');
+                notify(`Player "${player.name}" registered with ID ${finalPlayerId}!`);
             } catch (err) {
                 console.error('Could not create player:', err);
                 notify('Could not create player: ' + (err.message || err));
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerText = originalText;
+                    btn.innerHTML = originalContent;
                     btn.classList.remove('opacity-60', 'cursor-not-allowed');
                 }
             }
@@ -853,9 +1058,17 @@
                 player = { id: playerId, ...snap.data() };
             }
             currentPlayer = player;
-            const ids = ['pf_name','pf_dob','pf_age','pf_gender','pf_role','pf_secondary','pf_hand','pf_bowlingArm','pf_bowlingType','pf_battingPosition','pf_level','pf_contact'];
-            const vals = [player.name,player.dob,player.age,player.gender,player.role,player.secondaryRole,player.hand,player.bowlingArm,player.bowlingType,player.battingPosition,player.level,player.contact];
+
+            const pCode = getPlayerIdCode(player);
+            const pidBadge = document.getElementById('pf_playerId_badge');
+            if (pidBadge) pidBadge.innerText = pCode;
+
+            const normalizedBatPos = normalizeBattingPosition(player.battingPosition);
+
+            const ids = ['pf_name','pf_jersey','pf_dob','pf_age','pf_gender','pf_role','pf_secondary','pf_hand','pf_bowlingArm','pf_bowlingType','pf_battingPosition','pf_level','pf_contact','pf_emergencyContact','pf_notes'];
+            const vals = [player.name,player.jersey,player.dob,player.age,player.gender,player.role || 'Batter',player.secondaryRole,player.hand || 'RH',player.bowlingArm || 'Right Arm',player.bowlingType,normalizedBatPos,player.level || 'Development',player.contact,player.emergencyContact,player.notes];
             ids.forEach((id,i)=>{ const el=document.getElementById(id); if(el) el.value=vals[i] || ''; });
+            onRoleChange('pf');
             renderPlayerSnapshot(player);
             openSection('playerDetail');
             await loadSessions(playerId);
@@ -865,19 +1078,24 @@
         window.saveProfile = async () => {
             const name = document.getElementById('pf_name').value.trim();
             if (!name) { notify('Player name is required.'); return; }
+            const role = document.getElementById('pf_role').value;
+            const isWk = role === 'WK batter';
             const updated = {
                 name,
+                jersey: document.getElementById('pf_jersey')?.value?.trim() || '',
                 dob: document.getElementById('pf_dob').value,
                 age: document.getElementById('pf_age').value,
                 gender: document.getElementById('pf_gender').value,
-                role: document.getElementById('pf_role').value,
+                role: role,
                 secondaryRole: document.getElementById('pf_secondary').value,
                 hand: document.getElementById('pf_hand').value,
-                bowlingArm: document.getElementById('pf_bowlingArm').value,
-                bowlingType: document.getElementById('pf_bowlingType').value,
+                bowlingArm: isWk ? 'N/A' : document.getElementById('pf_bowlingArm').value,
+                bowlingType: isWk ? 'N/A' : document.getElementById('pf_bowlingType').value,
                 battingPosition: document.getElementById('pf_battingPosition').value,
                 level: document.getElementById('pf_level').value,
                 contact: document.getElementById('pf_contact').value,
+                emergencyContact: document.getElementById('pf_emergencyContact')?.value || '',
+                notes: document.getElementById('pf_notes')?.value || '',
                 updatedAt: new Date()
             };
             try {
@@ -887,7 +1105,7 @@
                 if (idx > -1) allPlayers[idx] = currentPlayer;
                 renderPlayerSnapshot(currentPlayer);
                 updateHomeStats();
-                notify('Profile updated.');
+                notify('Player profile updated successfully.');
             } catch (err) { notify('Update failed: ' + err.message); }
         };
 
@@ -980,12 +1198,48 @@
         // ============================================================
         // SESSION FORM
         // ============================================================
+        window.setFieldScore = (fieldId, val) => {
+            const input = document.getElementById(fieldId + '_score');
+            const badge = document.getElementById(fieldId + '_score_val');
+            if (input) input.value = val;
+            if (badge) {
+                badge.textContent = val ? val + '/5' : '—';
+                badge.className = `score-badge ${val ? 'has-score' : ''}`;
+            }
+            const container = document.querySelector(`.score-pills[data-field="${fieldId}"]`);
+            if (container) {
+                container.querySelectorAll('.score-pill-btn').forEach(btn => {
+                    if (btn.classList.contains('score-clear-btn')) {
+                        btn.classList.toggle('active', !val);
+                    } else {
+                        btn.classList.toggle('active', btn.innerText.trim() === String(val));
+                    }
+                });
+            }
+        };
+
         function fieldSelectHTML(field, currentValue, currentScore) {
             const opts = field.options.map(o => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('');
-            const scores = ['1','2','3','4','5'].map(o => `<option value="${o}" ${String(o)===String(currentScore||'')?'selected':''}>${o}</option>`).join('');
-            return `<div><label>${field.label}</label><select id="${field.id}">${opts}</select>
-                <div class="flex items-center gap-2 mt-1"><span class="text-[8px] uppercase font-black text-slate-400">Score</span>
-                <select id="${field.id}_score" class="!py-1 !text-xs !w-20"><option value="">—</option>${scores}</select></div></div>`;
+            const scoreVal = currentScore ? String(currentScore) : '';
+            return `<div class="metric-score-field flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-start gap-1.5 mb-1.5">
+                        <label class="!mb-0 text-slate-300 font-bold text-xs leading-tight">${escapeHtml(field.label)}</label>
+                        <span id="${field.id}_score_val" class="score-badge ${scoreVal ? 'has-score' : ''}">${scoreVal ? scoreVal + '/5' : '—'}</span>
+                    </div>
+                    <select id="${field.id}" class="!py-1.5 !px-2 !text-xs !min-h-[38px]">${opts}</select>
+                </div>
+                <div class="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between gap-1">
+                    <span class="text-[9px] uppercase font-black text-slate-400">Score</span>
+                    <div class="score-pills" data-field="${field.id}">
+                        ${['1','2','3','4','5'].map(n => `
+                            <button type="button" class="score-pill-btn ${scoreVal === n ? 'active' : ''}" onclick="setFieldScore('${field.id}', '${n}')">${n}</button>
+                        `).join('')}
+                        <button type="button" class="score-pill-btn score-clear-btn ${!scoreVal ? 'active' : ''}" onclick="setFieldScore('${field.id}', '')" title="Clear">✕</button>
+                    </div>
+                    <input type="hidden" id="${field.id}_score" value="${escapeHtml(scoreVal)}">
+                </div>
+            </div>`;
         }
 
         function renderSessionForm(role, data) {
@@ -993,7 +1247,7 @@
             document.getElementById('dynamicSections').innerHTML = visible.map(sec => `
                 <div class="form-card border-t-4 ${sec.color}">
                     <span class="pro-tag ${sec.tag}">${sec.title}</span>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         ${sec.fields.map(f => fieldSelectHTML(f, data[f.id], data[f.id + '_score'])).join('')}
                     </div>
                 </div>`).join('');
@@ -1269,18 +1523,18 @@
             const sessions = sessionsCache.filter(s => s.role === player.role || !s.role);
             const scores = calculateAssessmentScores(sessions[sessions.length - 1] || {});
             el.innerHTML = `
-                <div class="grid md:grid-cols-4 gap-3">
-                    <div class="score-card"><span>Overall</span><b>${scores.overall}%</b></div>
-                    <div class="score-card"><span>Technical Areas</span><b>${scores.count}</b></div>
-                    <div class="score-card"><span>Last Assessment</span><b>${sessions.length ? formatDateDisplay(sessions[0].date) : '—'}</b></div>
-                    <div class="score-card"><span>Level</span><b class="text-base">${escapeHtml(player.level || '—')}</b></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Overall</span><b class="text-lg sm:text-xl font-black ${scores.overall>=80?'!text-emerald-400':scores.overall>=60?'!text-amber-400':'!text-red-400'}">${scores.overall}%</b></div>
+                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Technical Areas</span><b class="text-lg sm:text-xl font-black text-white">${scores.count}</b></div>
+                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Last Assessment</span><b class="text-sm sm:text-base font-black text-white">${sessions.length ? formatDateDisplay(sessions[0].date) : '—'}</b></div>
+                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Level</span><b class="text-sm sm:text-base font-black text-white">${escapeHtml(player.level || '—')}</b></div>
                 </div>
                 <div class="form-card mt-3">
                     <div class="flex justify-between items-center mb-3"><span class="pro-tag !bg-emerald-600">Current Technical Snapshot</span></div>
-                    <div class="grid md:grid-cols-2 gap-2">${scores.items.slice(0,10).map(x=>`
-                        <div class="flex justify-between items-center border-b border-slate-100 py-2 text-xs">
-                            <span class="font-bold text-slate-600">${escapeHtml(x.label)}</span>
-                            <b class="${x.score <= 2 ? 'text-red-500' : x.score >= 4 ? 'text-emerald-600' : 'text-amber-600'}">${x.score}/5</b>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${scores.items.slice(0,10).map(x=>`
+                        <div class="flex justify-between items-center border-b border-slate-800 py-2 text-xs">
+                            <span class="font-bold text-slate-300">${escapeHtml(x.label)}</span>
+                            <b class="${x.score <= 2 ? '!text-red-400' : x.score >= 4 ? '!text-emerald-400' : '!text-amber-400'}">${x.score}/5</b>
                         </div>`).join('')}</div>
                 </div>`;
         }
@@ -1337,18 +1591,20 @@
 
         let pendingPlayerDayNotes = [];
 
-        function renderCoachParticipants(){
-            const type=document.getElementById('cs_type').value;
-            const el=document.getElementById('cs_player');
-            const hint=document.getElementById('cs_player_hint');
+        window.renderCoachParticipants = function renderCoachParticipants(){
+            const typeEl = document.getElementById('cs_type');
+            const el = document.getElementById('cs_player');
+            const hint = document.getElementById('cs_player_hint');
+            if (!el) return;
+            const type = typeEl ? typeEl.value : 'Team Session';
             if(type==='Individual Session'){
                 el.innerHTML=allPlayers.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-                hint.textContent='Individual session: the selected player is the focus of the session.';
+                if(hint) hint.textContent='Individual session: the selected player is the focus of the session.';
             } else {
                 el.innerHTML='<option value="">All / team session</option>'+allPlayers.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-                hint.textContent='Team session: player notes can be added individually below and linked to each player profile.';
+                if(hint) hint.textContent='Team session: player notes can be added individually below and linked to each player profile.';
             }
-        }
+        };
 
         function resetCoachingForm(type='Team Session'){
             document.getElementById('cs_date').value=todayISO();
@@ -1812,466 +2068,954 @@
             }
             document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(s.type||'Assessment')} · ${formatDateDisplay(s.date)}</h2><p>${escapeHtml(p?p.name:'Team Session')} · ${escapeHtml(s.category||s.role||'')}</p><h3>Session Objective</h3><p>${escapeHtml(s.objective||'')}</p><h3>Objective Achieved</h3><p><b>${escapeHtml(s.objectiveResult||'—')}</b> ${escapeHtml(s.objectiveReason||'')}</p><h3>What Went Well</h3><p>${escapeHtml(s.wentWell||'')}</p><h3>What Can Be Improved</h3><p>${escapeHtml(s.improve||'')}</p><h3>Coach's Day Note</h3><p>${escapeHtml(s.dayNote||'')}</p><h3>Player Day Notes</h3>${(s.playerDayNotes||[]).map(n=>{const pp=allPlayers.find(x=>x.id===n.playerId);return `<div class="report-line"><span><b>${escapeHtml(pp?pp.name:'Player')}</b><br>${escapeHtml(n.note)}</span><b>${escapeHtml(n.tags||'')}</b></div>`}).join('')||'<p>No player notes.</p>'}<h3>Next Action</h3><p>${escapeHtml(s.nextAction||'')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
         };
+    
+        // Global window bindings for inline event handlers and actions
+        window.loadPlayers = loadPlayers;
+        window.loadCoachingSessions = loadCoachingSessions;
+        window.loadMatches = loadMatches;
+        window.loadEducationMaterials = loadEducationMaterials;
+        window.populateEducationCategories = populateEducationCategories;
+        window.updateHomeStats = updateHomeStats;
+        window.resetCoachingForm = resetCoachingForm;
+        window.renderPlayerDayNotes = renderPlayerDayNotes;
+        window.populateReportSelectors = populateReportSelectors;
+        window.escapeHtml = escapeHtml;
+        window.renderCoachParticipants = renderCoachParticipants;
+        window.loadCoachApprovals = loadCoachApprovals;
     </script>
 
     <style>
+        /* ============================================================
+           HIGH DENSITY DESIGN THEME STYLING
+           Palette: Obsidian (#0B0E14), Slate Panels (#0F131A, #131720, #121722)
+           Accents: Emerald (#10B981, #059669), Amber (#F59E0B), Cyan (#38BDF8)
+           ============================================================ */
+        :root {
+            --bg-base: #0B0E14;
+            --bg-sidebar: #0F131A;
+            --bg-panel: #131720;
+            --bg-card: #121722;
+            --bg-subcard: #182030;
+            --border-subtle: #1E293B;
+            --border-highlight: #334155;
+            --emerald-accent: #10B981;
+            --emerald-dark: #059669;
+            --amber-accent: #F59E0B;
+            --text-main: #F1F5F9;
+            --text-body: #CBD5E1;
+            --text-muted: #94A3B8;
+        }
 
+        html, body {
+            background: #0B0E14 !important;
+            color: #CBD5E1 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+        }
 
-        .large-note { min-height:125px; resize:vertical; line-height:1.6; }
-        .note-box { min-height:95px; resize:vertical; line-height:1.5; }
-        .day-note { min-height:190px; resize:vertical; line-height:1.7; font-size:14px; }
-        .coach-note-card { border-top:5px solid #0f172a; }
-        .achievement-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:10px; }
-        .achievement-btn { padding:14px 10px; border:1px solid #cbd5e1; background:#f8fafc; border-radius:10px; font-size:11px; font-weight:900; color:#475569; }
-        .achievement-btn:hover { background:#ecfdf5; border-color:#6ee7b7; }
-        .achievement-btn.selected { background:#059669; border-color:#059669; color:white; box-shadow:0 5px 14px rgba(5,150,105,.2); }
-        .player-note-entry { background:#faf5ff; border:1px solid #e9d5ff; border-radius:12px; padding:15px; margin-top:10px; }
-        .empty-note { padding:18px; text-align:center; font-size:11px; color:#94a3b8; font-style:italic; background:#f8fafc; border-radius:10px; }
-        .status-pill { display:inline-block; padding:4px 7px; border-radius:999px; font-size:9px; font-weight:900; text-transform:uppercase; }
-        .status-pill.good { background:#dcfce7; color:#15803d; }
-        .status-pill.partial { background:#fef3c7; color:#b45309; }
-        .status-pill.not { background:#fee2e2; color:#b91c1c; }
-        .day-note-profile { padding:12px 2px; border-bottom:1px solid #f1f5f9; }
-        .day-note-profile b { font-size:10px; color:#475569; }
-        .day-note-profile p { font-size:12px; color:#334155; line-height:1.6; margin-top:5px; white-space:pre-wrap; }
-        .day-note-profile small { font-size:9px; color:#7c3aed; font-weight:800; }
-        @media(max-width:600px){ .achievement-grid{grid-template-columns:1fr}.day-note{min-height:150px} }
+        /* Custom subtle scrollbars for high-density UI */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0B0E14; }
+        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+        .large-note { min-height: 120px; resize: vertical; line-height: 1.5; }
+        .note-box { min-height: 90px; resize: vertical; line-height: 1.5; }
+        .day-note { min-height: 180px; resize: vertical; line-height: 1.6; font-size: 13px; }
+        .coach-note-card { border-top: 3px solid #10B981; }
+
+        .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+        .achievement-btn {
+            padding: 10px 8px;
+            border: 1px solid #1E293B;
+            background: #182030;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 800;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: all 0.15s;
+        }
+        .achievement-btn:hover { background: #1F2A3F; border-color: #10B981; color: #F1F5F9; }
+        .achievement-btn.selected {
+            background: #059669;
+            border-color: #10B981;
+            color: #FFFFFF;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+        }
+
+        .player-note-entry {
+            background: #182030;
+            border: 1px solid #1E293B;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            color: #E2E8F0;
+        }
+        .empty-note {
+            padding: 16px;
+            text-align: center;
+            font-size: 11px;
+            color: #64748B;
+            font-style: italic;
+            background: #121722;
+            border: 1px dashed #1E293B;
+            border-radius: 8px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .status-pill.good { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .status-pill.partial { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .status-pill.not { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+        .day-note-profile { padding: 10px 2px; border-bottom: 1px solid #1E293B; }
+        .day-note-profile b { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .day-note-profile p { font-size: 12px; color: #CBD5E1; line-height: 1.5; margin-top: 4px; white-space: pre-wrap; }
+        .day-note-profile small { font-size: 9px; color: #10B981; font-weight: 800; }
+
+        @media(max-width: 600px){ .achievement-grid { grid-template-columns: 1fr; } .day-note { min-height: 140px; } }
 
 
         /* ============================================================
-           V5 HOME HERO
+           HIGH DENSITY DASHBOARD & MAIN INTERFACE
            ============================================================ */
+        #app-interface {
+            background: #0B0E14 !important;
+            color: #CBD5E1 !important;
+            min-height: 100vh;
+            margin-left: 260px;
+        }
+        #app-interface > .max-w-\[1100px\] {
+            max-width: 1400px !important;
+            padding: 0 24px 28px !important;
+        }
 
+        .dashboard-topline {
+            height: 72px;
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid #1E293B;
+            margin-bottom: 20px;
+        }
+        .welcome-title { color: #FFFFFF !important; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+        .welcome-subtitle { color: #94A3B8 !important; font-size: 11px; font-weight: 500; }
+        .welcome-title span { color: #10B981 !important; }
+        .coach-user b { color: #FFFFFF !important; }
+        .coach-user small, .coach-user > span { color: #94A3B8 !important; }
+        .coach-user .avatar { background: #1E293B !important; color: #10B981 !important; border: 1px solid #334155; }
 
-        /* ============================================================
-           V7 — MATCH THE PROVIDED DASHBOARD MOCKUP
-           ============================================================ */
-        body { background:#06111f !important; }
-        #app-interface { background:#06111f; color:#e2e8f0; }
-        #app-interface > .max-w-\[1100px\] { padding:0 28px 28px !important; }
-        .dashboard-topline { height:96px; padding:0 5px; }
-        .welcome-title { color:#f8fafc; font-size:21px; }
-        .welcome-subtitle { color:#94a3b8; font-size:11px; }
-        .welcome-title span { color:#f97316; }
-        .coach-user b { color:#f8fafc; }
-        .coach-user small,.coach-user > span { color:#94a3b8; }
-
+        /* Telemetry & High Density Hero */
         .mock-hero {
-            position:relative; height:435px; overflow:hidden;
-            border:1px solid #203247; border-radius:14px;
-            background:#06111f; box-shadow:0 15px 45px rgba(0,0,0,.22);
+            position: relative;
+            height: 380px;
+            overflow: hidden;
+            border: 1px solid #1E293B;
+            border-radius: 10px;
+            background: #0B0E14;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
         .mock-hero-photo {
-            position:absolute; top:0; right:0; bottom:0;
-            width:64%; background-size:cover;
-            /* Position the photo to keep the coach's face clearly visible. */
-            background-position:center 24%;
+            position: absolute;
+            top: 0; right: 0; bottom: 0;
+            width: 60%;
+            background-size: cover;
+            background-position: center 24%;
+            opacity: 0.85;
+            filter: contrast(1.1);
         }
         .mock-hero-shade {
-            position:absolute; inset:0;
+            position: absolute;
+            inset: 0;
             background:
-                linear-gradient(90deg,#06111f 0%,#06111f 27%,rgba(6,17,31,.96) 40%,rgba(6,17,31,.62) 57%,rgba(6,17,31,.08) 82%),
-                linear-gradient(0deg,rgba(6,17,31,.45),transparent 45%);
+                linear-gradient(90deg, #0B0E14 0%, #0B0E14 30%, rgba(11,14,20,0.95) 45%, rgba(11,14,20,0.65) 65%, rgba(11,14,20,0.2) 88%),
+                linear-gradient(0deg, rgba(11,14,20,0.8) 0%, transparent 60%);
         }
-        .mock-hero-content { position:absolute; inset:0; display:flex; align-items:center; }
-        .mock-copy { width:54%; padding:35px 38px; }
+        .mock-hero-content { position: absolute; inset: 0; display: flex; align-items: center; }
+        .mock-copy { width: 55%; padding: 28px 32px; z-index: 5; }
         .mock-copy h1 {
-            color:#f8fafc; font-size:clamp(38px,4.6vw,58px); line-height:1.02;
-            letter-spacing:-.045em; font-weight:950; margin:0;
+            color: #FFFFFF;
+            font-size: clamp(30px, 3.8vw, 48px);
+            line-height: 1.05;
+            letter-spacing: -0.04em;
+            font-weight: 900;
+            margin: 0;
         }
-        .mock-copy h1 span { color:#f97316; }
-        .mock-copy > p { margin-top:20px; color:#e2e8f0; font-size:17px; line-height:1.5; }
+        .mock-copy h1 span { color: #10B981; }
+        .mock-copy > p { margin-top: 14px; color: #CBD5E1; font-size: 14px; line-height: 1.5; font-weight: 400; }
         .mock-metrics {
-            display:flex; margin-top:30px; padding-top:15px;
-            border-top:1px solid #334155; width:430px; max-width:100%;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 14px;
+            border-top: 1px solid #1E293B;
+            width: 100%;
+            max-width: 480px;
         }
         .mock-metrics div {
-            min-width:120px; padding-right:25px; margin-right:25px;
-            border-right:1px solid #243449; position:relative;
+            min-width: 0;
+            padding: 8px 10px;
+            background: rgba(18, 23, 34, 0.75);
+            border: 1px solid #1E293B;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
-        .mock-metrics div:last-child { border-right:0; }
-        .mock-metrics i { display:inline-block; font-style:normal; color:#f97316; font-size:20px; margin-right:9px; }
-        .mock-metrics b { color:#f8fafc; font-size:26px; font-weight:900; }
-        .mock-metrics small { display:block; margin-left:31px; color:#cbd5e1; font-size:10px; }
-        .mock-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-top:10px; }
-        .mock-card {
-            min-height:310px; text-align:left; padding:20px 17px 15px;
-            border:1px solid #263a50; border-radius:11px; background:#091726;
-            color:#e2e8f0; display:flex; flex-direction:column;
-            box-shadow:0 10px 25px rgba(0,0,0,.15); transition:.16s;
-        }
-        .mock-card:hover { transform:translateY(-2px); background:#0b1b2d; }
-        .mock-card.blue { border-top:2px solid #1683ff; }
-        .mock-card.green { border-top:2px solid #5ecb20; }
-        .mock-card.orange { border-top:2px solid #ff7a00; }
-        .mock-card.purple { border-top:2px solid #b43cff; }
-        .mock-card-top { display:flex; align-items:center; justify-content:space-between; }
-        .mock-card-top span { font-size:18px; font-weight:900; color:#cbd5e1; }
-        .mock-card-top strong {
-            width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-            font-size:27px;color:white;background:#12304d; box-shadow:0 0 20px rgba(37,99,235,.22);
-        }
-        .mock-card.green .mock-card-top strong { background:#225f17; box-shadow:0 0 20px rgba(94,203,32,.2); }
-        .mock-card.orange .mock-card-top strong { background:#71320b; box-shadow:0 0 20px rgba(255,122,0,.2); }
-        .mock-card.purple .mock-card-top strong { background:#4d176c; box-shadow:0 0 20px rgba(180,60,255,.2); }
-        .mock-card h3 { margin:17px 0 4px; font-size:16px; font-weight:950; }
-        .mock-card.blue h3,.mock-card.blue h4,.mock-card.blue .mock-go { color:#1683ff; }
-        .mock-card.green h3,.mock-card.green h4,.mock-card.green .mock-go { color:#5ecb20; }
-        .mock-card.orange h3,.mock-card.orange h4,.mock-card.orange .mock-go { color:#ff7a00; }
-        .mock-card.purple h3,.mock-card.purple h4,.mock-card.purple .mock-go { color:#b43cff; }
-        .mock-card h4 { font-size:10px; font-weight:800; }
-        .mock-card p { color:#cbd5e1; font-size:10px; line-height:1.55; margin-top:15px; }
-        .mock-go {
-            margin-top:auto; border:1px solid currentColor; border-radius:6px;
-            padding:9px 10px; font-size:9px; font-weight:900;
-        }
-        .mock-go b { float:right; font-size:13px; }
-        .mock-footer {
-            margin-top:14px; border:1px solid #22364c; border-radius:10px;
-            background:#091726; min-height:55px; display:flex; align-items:center;
-            padding:10px 20px; gap:14px;
-        }
-        .mock-footer span { color:#f97316; font-size:20px; }
-        .mock-footer p { color:#cbd5e1; font-size:12px; }
-        .mock-footer b { color:#f97316; }
+        .mock-metrics i { display: inline-block; font-style: normal; color: #10B981; font-size: 14px; margin-bottom: 2px; }
+        .mock-metrics b { color: #FFFFFF; font-size: 18px; font-weight: 900; line-height: 1.1; }
+        .mock-metrics small { display: block; color: #94A3B8; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; margin-top: 3px; }
 
-        @media(max-width:1000px){
-            .mock-cards{grid-template-columns:repeat(2,1fr)}
-            .mock-hero-photo{width:60%}
+        /* High Density Cards Grid */
+        .mock-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+        .mock-card {
+            min-height: 250px;
+            text-align: left;
+            padding: 16px 14px 14px;
+            border: 1px solid #1E293B;
+            border-radius: 8px;
+            background: #121722;
+            color: #CBD5E1;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            transition: transform 0.15s, border-color 0.15s, background-color 0.15s;
+            cursor: pointer;
         }
-        @media(max-width:700px){
-            .dashboard-topline{height:72px}
-            .mock-hero{height:510px}
-            .mock-hero-photo{width:100%;height:100%;opacity:.6;background-position:center 20%}
-            .mock-hero-shade{background:linear-gradient(90deg,rgba(6,17,31,.94),rgba(6,17,31,.48)),linear-gradient(0deg,rgba(6,17,31,.8),transparent)}
-            .mock-copy{width:100%;padding:30px 24px}
-            .mock-copy h1{font-size:42px}
-            .mock-cards{grid-template-columns:1fr}
+        .mock-card:hover {
+            transform: translateY(-2px);
+            background: #161D2B;
+            border-color: #334155;
+        }
+        .mock-card.blue { border-top: 2px solid #38BDF8; }
+        .mock-card.green { border-top: 2px solid #10B981; }
+        .mock-card.orange { border-top: 2px solid #F59E0B; }
+        .mock-card.purple { border-top: 2px solid #A855F7; }
+
+        .mock-card-top { display: flex; align-items: center; justify-content: space-between; }
+        .mock-card-top span { font-size: 14px; font-weight: 800; color: #64748B; font-family: monospace; }
+        .mock-card-top strong {
+            width: 38px; height: 38px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; color: white;
+            background: #1E293B;
+            border: 1px solid #334155;
+        }
+        .mock-card.green .mock-card-top strong { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34D399; }
+        .mock-card.blue .mock-card-top strong { background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38BDF8; }
+        .mock-card.orange .mock-card-top strong { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #FBBF24; }
+        .mock-card.purple .mock-card-top strong { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.4); color: #C084FC; }
+
+        .mock-card h3 { margin: 12px 0 2px; font-size: 13px; font-weight: 900; letter-spacing: 0.03em; }
+        .mock-card.blue h3, .mock-card.blue h4, .mock-card.blue .mock-go { color: #38BDF8; }
+        .mock-card.green h3, .mock-card.green h4, .mock-card.green .mock-go { color: #10B981; }
+        .mock-card.orange h3, .mock-card.orange h4, .mock-card.orange .mock-go { color: #F59E0B; }
+        .mock-card.purple h3, .mock-card.purple h4, .mock-card.purple .mock-go { color: #A855F7; }
+        .mock-card h4 { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+        .mock-card p { color: #94A3B8; font-size: 11px; line-height: 1.5; margin-top: 10px; }
+        .mock-go {
+            margin-top: auto;
+            border: 1px solid currentColor;
+            border-radius: 5px;
+            padding: 8px 10px;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 36px;
+        }
+
+        .mock-footer {
+            margin-top: 12px;
+            border: 1px solid #1E293B;
+            border-radius: 8px;
+            background: #121722;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            gap: 12px;
+        }
+        .mock-footer span { color: #10B981; font-size: 18px; }
+        .mock-footer p { color: #94A3B8; font-size: 11px; }
+        .mock-footer b { color: #34D399; }
+
+        /* Metric Score Compact Form Elements */
+        .metric-score-field {
+            background: #0F131A;
+            border: 1px solid #1E293B;
+            border-radius: 6px;
+            padding: 9px 10px;
+            transition: border-color 0.15s;
+        }
+        .metric-score-field:hover, .metric-score-field:focus-within {
+            border-color: #334155;
+        }
+        .score-badge {
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #182030;
+            color: #64748B;
+            border: 1px solid #1E293B;
+            white-space: nowrap;
+        }
+        .score-badge.has-score {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34D399;
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+        .score-pills {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .score-pill-btn {
+            min-width: 28px;
+            min-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 900;
+            border-radius: 4px;
+            background: #182030;
+            color: #94A3B8;
+            border: 1px solid #1E293B;
+            cursor: pointer;
+            transition: all 0.12s;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        .score-pill-btn:hover {
+            background: #222C40;
+            color: #FFFFFF;
+            border-color: #334155;
+        }
+        .score-pill-btn.active {
+            background: #059669 !important;
+            color: #FFFFFF !important;
+            border-color: #10B981 !important;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+        }
+        .score-pill-btn.score-clear-btn {
+            font-size: 9px;
+            min-width: 24px;
+            color: #64748B;
+        }
+        .score-pill-btn.score-clear-btn:hover {
+            color: #EF4444;
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        /* Responsive Media Queries */
+        @media(max-width: 1024px){
+            .mock-cards { grid-template-columns: repeat(2, 1fr); }
+            .mock-hero-photo { width: 55%; }
+        }
+        @media(max-width: 860px){
+            #app-interface {
+                margin-left: 0 !important;
+            }
+            .mobile-topbar {
+                display: flex !important;
+                align-items: center;
+                justify-content: space-between;
+                height: 54px;
+                padding: 0 16px;
+                background: #0F131A;
+                border-bottom: 1px solid #1E293B;
+                position: sticky;
+                top: 0;
+                z-index: 70;
+            }
+            .elite-sidebar {
+                transform: translateX(-100%);
+                box-shadow: none;
+            }
+            .elite-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 0 0 40px rgba(0, 0, 0, 0.85);
+            }
+            .sidebar-backdrop {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.75);
+                backdrop-filter: blur(2px);
+                z-index: 75;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+            }
+            .sidebar-backdrop.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+        }
+        @media(max-width: 700px){
+            .dashboard-topline { height: auto; padding: 10px 0; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
+            .mock-hero { height: auto; min-height: 480px; }
+            .mock-hero-photo { width: 100%; height: 100%; opacity: .45; background-position: center 20%; }
+            .mock-hero-shade { background: linear-gradient(90deg, rgba(6,17,31,.96), rgba(6,17,31,.7)), linear-gradient(0deg, rgba(6,17,31,.9), transparent); }
+            .mock-copy { width: 100%; padding: 22px 18px; }
+            .mock-copy h1 { font-size: 32px; }
+            .mock-metrics { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .mock-cards { grid-template-columns: 1fr; }
+            .mock-card { min-height: auto; }
+            .form-card { padding: 1rem !important; margin-bottom: 1rem !important; }
+            #app-interface > .max-w-\[1100px\] { padding: 12px 14px 24px !important; }
         }
 
         /* ============================================================
-           V6 — ELITE DASHBOARD MOCKUP UI
+           SIDEBAR STYLING - HIGH DENSITY
            ============================================================ */
-        :root { --navy:#06111f; --navy2:#0b1728; --orange:#f97316; --orange2:#fb923c; --line:#1e293b; }
-        body { background:#f4f7fb !important; }
         .elite-sidebar {
-            position:fixed; left:0; top:0; bottom:0; width:272px; z-index:80;
-            background:linear-gradient(180deg,#06111f 0%,#081525 100%);
-            color:#cbd5e1; padding:22px 20px 18px; display:flex; flex-direction:column;
-            border-right:1px solid #17253a; overflow-y:auto;
+            position: fixed;
+            left: 0; top: 0; bottom: 0;
+            width: 270px;
+            z-index: 80;
+            background: #0F131A;
+            color: #CBD5E1;
+            padding: 16px 14px 14px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #1E293B;
+            overflow-y: auto;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .brand-block { display:flex; align-items:center; gap:12px; padding:0 2px 25px; }
-        .brand-mark { width:46px;height:46px;border:2px solid #f97316;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:23px;box-shadow:0 0 18px rgba(249,115,22,.18); }
-        .brand-title { font-size:18px; line-height:1; font-weight:950; color:#f8fafc; letter-spacing:-.04em; }
-        .brand-title span { color:#f97316; }
-        .brand-subtitle { font-size:8px; letter-spacing:.38em; font-weight:900; color:#cbd5e1; margin-top:6px; padding-left:1px; }
-        .sidebar-nav { display:flex; flex-direction:column; gap:5px; }
+        .brand-block { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 2px 16px; }
+        .brand-mark {
+            width: 36px; height: 36px;
+            border: 1px solid #10B981;
+            background: #059669;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            color: #FFFFFF; font-size: 18px; font-weight: 900;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+        }
+        .brand-title { font-size: 15px; line-height: 1; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; }
+        .brand-title span { color: #10B981; }
+        .brand-subtitle { font-size: 8px; letter-spacing: 0.25em; font-weight: 800; color: #64748B; margin-top: 4px; }
+        .sidebar-close-btn {
+            display: none;
+            width: 36px;
+            height: 36px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            border: 1px solid #1E293B;
+            background: #182030;
+            color: #94A3B8;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        @media(max-width: 860px){
+            .sidebar-close-btn { display: flex; }
+        }
+        .sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
         .side-link {
-            width:100%; display:flex; align-items:center; gap:13px; border:0; border-radius:8px;
-            background:transparent; color:#cbd5e1; padding:12px 13px; font-size:12px; font-weight:800;
-            text-align:left; transition:.15s;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: #94A3B8;
+            padding: 10px 12px;
+            min-height: 44px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: left;
+            transition: all 0.15s;
+            cursor: pointer;
+            touch-action: manipulation;
         }
-        .side-link:hover { background:#102238; color:#fff; }
-        .side-link.active { background:linear-gradient(90deg,#f97316,#d95b05); color:#fff; box-shadow:0 8px 18px rgba(249,115,22,.15); }
-        .side-icon { width:18px; text-align:center; font-size:18px; line-height:1; color:inherit; }
-        .sidebar-divider { height:1px; background:#223148; margin:22px 0; }
-        .quick-label { font-size:9px; color:#f97316; font-weight:950; letter-spacing:.16em; margin:0 4px 9px; }
-        .quick-actions { display:flex; flex-direction:column; gap:2px; }
-        .quick-link { border:0;background:transparent;color:#aebdce;text-align:left;padding:9px 5px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:9px;border-radius:7px; }
-        .quick-link:hover { background:#102238;color:#fff; }
-        .quick-link span { color:#f97316;font-size:17px; }
-        .sidebar-quote { margin-top:auto; padding:18px 15px; border:1px solid #2b3c52; border-radius:12px; background:rgba(15,30,48,.75); }
-        .sidebar-quote b { color:#f97316;font-size:30px;line-height:.5; }
-        .sidebar-quote p { color:#cbd5e1;font-size:11px;line-height:1.65;margin:8px 0 10px; }
-        .sidebar-quote span { color:#fb923c;font-size:11px;font-style:italic;font-weight:800; }
-        .sidebar-logout { margin-top:13px;background:transparent;border:1px solid #26364b;color:#7f91a7;border-radius:7px;padding:8px;font-size:9px;font-weight:900;text-transform:uppercase; }
-        .mobile-topbar { display:none; }
+        .side-link:hover { background: #161D2B; color: #FFFFFF; border-color: #1E293B; }
+        .side-link.active {
+            background: rgba(16, 185, 129, 0.12);
+            color: #34D399;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+        }
+        .side-icon { width: 18px; text-align: center; font-size: 15px; line-height: 1; color: inherit; }
+        .sidebar-divider { height: 1px; background: #1E293B; margin: 14px 0; }
+        .quick-label { font-size: 9px; color: #10B981; font-weight: 900; letter-spacing: 0.15em; margin: 0 4px 6px; }
+        .quick-actions { display: flex; flex-direction: column; gap: 4px; }
+        .quick-link {
+            border: 1px solid transparent;
+            background: transparent;
+            color: #94A3B8;
+            text-align: left;
+            padding: 9px 10px;
+            min-height: 44px;
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 6px;
+            transition: all 0.15s;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .quick-link:hover { background: #161D2B; color: #FFFFFF; border-color: #1E293B; }
+        .quick-link span { color: #10B981; font-size: 15px; font-weight: 900; }
+        .sidebar-quote {
+            margin-top: auto;
+            padding: 12px;
+            border: 1px solid #1E293B;
+            border-radius: 8px;
+            background: #121722;
+        }
+        .sidebar-quote b { color: #10B981; font-size: 20px; line-height: 0.5; }
+        .sidebar-quote p { color: #94A3B8; font-size: 10px; line-height: 1.5; margin: 6px 0 8px; }
+        .sidebar-quote span { color: #34D399; font-size: 9px; font-weight: 800; }
+        .sidebar-logout {
+            margin-top: 10px;
+            background: #182030;
+            border: 1px solid #1E293B;
+            color: #94A3B8;
+            border-radius: 6px;
+            padding: 10px;
+            min-height: 44px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            touch-action: manipulation;
+        }
+        .sidebar-logout:hover { background: #222C40; color: #F1F5F9; border-color: #334155; }
+        
+        /* Mobile Topbar UI */
+        .mobile-topbar { display: none; }
+        .hamburger {
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; color: #CBD5E1;
+            background: #182030;
+            border: 1px solid #1E293B;
+            border-radius: 6px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .hamburger:hover, .hamburger:active {
+            background: #222C40;
+            color: #FFFFFF;
+            border-color: #334155;
+        }
+        .mobile-home {
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; color: #10B981;
+            background: #182030;
+            border: 1px solid #1E293B;
+            border-radius: 6px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .mobile-home:hover, .mobile-home:active {
+            background: #222C40;
+            border-color: #334155;
+        }
+        .mobile-brand { font-size: 14px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; }
+        .mobile-brand span { color: #10B981; }
 
-        #app-interface { margin-left:272px; min-height:100vh; }
-        #app-interface > .max-w-\[1100px\] { max-width:none !important; padding:0 28px 34px !important; }
-        .dashboard-topline { height:78px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
-        .welcome-title { font-size:19px; font-weight:900; color:#0f172a; }
-        .welcome-title span { color:#f97316; }
-        .welcome-subtitle { font-size:10px; color:#64748b; margin-top:4px; }
-        .coach-user { display:flex; align-items:center; gap:9px; }
-        .coach-user .avatar { width:35px;height:35px;border-radius:50%;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900; }
-        .coach-user b { display:block;font-size:10px;color:#0f172a; }
-        .coach-user small { display:block;font-size:8px;color:#64748b;margin-top:2px; }
-        .notification-dot { background:#ef4444;color:white;width:17px;height:17px;border-radius:50%;font-size:8px;font-weight:900;display:flex;align-items:center;justify-content:center;align-self:flex-start;margin-top:1px; }
-        .coach-user > span { color:#64748b;font-size:14px; }
+        /* ============================================================
+           GENERIC CONTAINER & FORM STYLING - HIGH DENSITY
+           ============================================================ */
+        .app-section { max-width: 1400px; margin: 0 auto; }
+        .section-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
+        .section-header h2 { font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; margin-top: 4px; }
+        .section-header p { color: #94A3B8; font-size: 11px; }
+        .back-btn { color: #10B981; font-size: 11px; font-weight: 800; cursor: pointer; }
+        .back-btn:hover { text-decoration: underline; }
 
-        .home-hero { min-height:405px !important; border-radius:3px !important; margin-bottom:22px !important; }
-        .hero-content { min-height:405px !important; padding:42px 34px !important; }
-        .hero-copy { max-width:510px !important; }
-        .hero-copy h2 { font-size:clamp(39px,4.7vw,58px) !important; }
-        .hero-kicker { color:#fb923c !important; }
-        .hero-stats div { min-width:95px !important; }
-        .home-section-heading { margin:19px 0 13px !important; }
-        .home-section-heading h3 { font-size:16px !important; }
-        .section-card {
-            min-height:315px !important; border-radius:12px !important; padding:22px !important;
-            box-shadow:0 8px 20px rgba(15,23,42,.045) !important;
+        .form-card {
+            background: #121722 !important;
+            border-radius: 8px !important;
+            border: 1px solid #1E293B !important;
+            padding: 1.25rem !important;
+            margin-bottom: 1.25rem !important;
+            color: #CBD5E1 !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
         }
-        .section-card h3 { font-size:14px !important; }
-        .section-card p { font-size:10px !important; }
-        .section-card small { font-size:9px !important; }
-        .home-quote { border-radius:10px !important; margin-top:16px !important; }
-
-        /* Internal pages use the same premium shell. */
-        .app-section { max-width:1200px; margin:0 auto; }
-        .section-header h2 { letter-spacing:-.03em; }
-        .form-card { border-radius:12px !important; box-shadow:0 5px 18px rgba(15,23,42,.04) !important; }
-        .pro-tag { border-radius:5px !important; }
-        input, select, textarea { border-radius:7px !important; }
-
-        @media(max-width:900px){
-            .elite-sidebar { transform:translateX(-100%); transition:.2s; box-shadow:20px 0 40px rgba(2,8,23,.25); }
-            .elite-sidebar.open { transform:translateX(0); }
-            .mobile-topbar { display:flex; position:sticky;top:0;z-index:75;height:58px;background:#06111f;color:#fff;align-items:center;justify-content:space-between;padding:0 15px; }
-            .hamburger,.mobile-home { background:transparent;border:0;color:#fff;font-size:22px; }
-            .mobile-brand { font-weight:950;font-size:15px;letter-spacing:-.03em; }
-            .mobile-brand span { color:#f97316; }
-            #app-interface { margin-left:0; }
-            #app-interface > .max-w-\[1100px\] { padding:0 15px 28px !important; }
-            .dashboard-topline { height:70px; }
-            .coach-user { display:none; }
-        }
-
-        .home-hero {
-            position:relative; min-height:390px; overflow:hidden; border-radius:24px;
-            background:#06111f; border:1px solid rgba(255,255,255,.08);
-            box-shadow:0 18px 45px rgba(2,8,23,.20); margin-bottom:26px;
-        }
-        .hero-photo {
-            position:absolute; inset:0; background-size:cover; background-position:center 35%;
-            transform:scale(1.01);
-        }
-        .hero-overlay {
-            position:absolute; inset:0;
-            background:
-                linear-gradient(90deg, rgba(3,12,25,.98) 0%, rgba(3,12,25,.88) 30%, rgba(3,12,25,.42) 58%, rgba(3,12,25,.08) 100%),
-                linear-gradient(0deg, rgba(3,12,25,.60) 0%, transparent 55%);
-        }
-        .hero-content { position:relative; min-height:390px; display:flex; align-items:center; padding:40px 48px; }
-        .hero-copy { max-width:570px; color:white; }
-        .hero-kicker { color:#fb923c; font-size:10px; font-weight:900; letter-spacing:.25em; }
-        .hero-copy h2 { font-size:clamp(36px,5vw,58px); line-height:.98; font-weight:950; letter-spacing:-.04em; margin:12px 0 18px; }
-        .hero-copy h2 span { color:#fb923c; }
-        .hero-subtitle { font-size:17px; line-height:1.55; color:#e2e8f0; }
-        .hero-stats { display:flex; gap:0; margin-top:28px; width:max-content; border-top:1px solid rgba(255,255,255,.18); }
-        .hero-stats div { min-width:105px; padding:14px 24px 0 0; margin-right:24px; border-right:1px solid rgba(255,255,255,.14); }
-        .hero-stats div:last-child { border-right:0; }
-        .hero-stats b { display:block; font-size:25px; line-height:1; }
-        .hero-stats span { display:block; color:#94a3b8; font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:.12em; margin-top:5px; }
-        .home-section-heading { display:flex; justify-content:space-between; align-items:end; gap:15px; margin:25px 0 14px; }
-        .home-section-heading p { color:#f97316; font-size:9px; font-weight:900; letter-spacing:.2em; }
-        .home-section-heading h3 { font-size:17px; font-weight:900; color:#0f172a; margin-top:3px; }
-        .coach-badge { padding:6px 10px; border-radius:999px; background:#0f172a; color:#f8fafc; font-size:8px; font-weight:900; letter-spacing:.1em; white-space:nowrap; }
-        .section-card { min-height:300px; display:flex; flex-direction:column; }
-        .section-card h3 { margin-top:15px; }
-        .section-card small { color:#64748b; font-size:10px; line-height:1.55; margin-top:13px; }
-        .section-card .card-link { margin-top:auto; display:block; padding-top:18px; font-size:10px; font-weight:900; }
-        .themed-blue { border-top:3px solid #2563eb; }
-        .themed-blue .card-link { color:#2563eb; }
-        .themed-green { border-top:3px solid #16a34a; }
-        .themed-green .card-link { color:#16a34a; }
-        .themed-orange { border-top:3px solid #f97316; }
-        .themed-orange .card-link { color:#f97316; }
-        .themed-purple { border-top:3px solid #9333ea; }
-        .themed-purple .card-link { color:#9333ea; }
-        .home-quote {
-            margin-top:18px; padding:14px 20px; border:1px solid #e2e8f0; border-radius:13px;
-            background:#0f172a; color:#e2e8f0; display:flex; align-items:center; gap:12px;
-        }
-        .home-quote span { color:#fb923c; font-size:32px; font-weight:900; line-height:1; }
-        .home-quote p { font-size:12px; }
-        .home-quote b { color:#fb923c; }
-        @media(max-width:700px){
-            .hero-content{padding:28px 24px; align-items:flex-end}
-            .home-hero,.hero-content{min-height:440px}
-            .hero-overlay{background:linear-gradient(90deg,rgba(3,12,25,.95),rgba(3,12,25,.55)),linear-gradient(0deg,rgba(3,12,25,.85),transparent)}
-            .hero-copy h2{font-size:40px}
-            .hero-stats div{min-width:75px;padding-right:12px;margin-right:12px}
-            .home-section-heading{align-items:flex-start;flex-direction:column}
-            .coach-badge{display:none}
-        }
-
-        .section-card { background:white; border:1px solid #e2e8f0; border-radius:18px; padding:28px; box-shadow:0 8px 25px rgba(15,23,42,.05); transition:.18s; }
-        .section-card:hover { transform:translateY(-2px); box-shadow:0 12px 30px rgba(15,23,42,.09); }
-        .section-card h3 { font-size:18px; font-weight:900; margin-top:18px; color:#0f172a; }
-        .section-card p { font-size:12px; color:#64748b; margin-top:4px; }
-        .section-icon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; }
-        .stat-card,.score-card { background:white; border:1px solid #e2e8f0; border-radius:12px; padding:14px; }
-        .stat-card span,.score-card span { display:block; font-size:9px; text-transform:uppercase; font-weight:800; color:#94a3b8; }
-        .stat-card b,.score-card b { display:block; font-size:20px; font-weight:900; margin-top:4px; color:#0f172a; }
-        .section-header { display:flex; justify-content:space-between; align-items:end; gap:15px; margin-bottom:20px; }
-        .section-header h2 { font-size:25px; font-weight:900; color:#0f172a; margin-top:6px; }
-        .section-header p { color:#64748b; font-size:12px; }
-        .back-btn { color:#64748b; font-size:11px; font-weight:800; text-decoration:underline; }
-        .primary-btn { background:#059669; color:white; padding:9px 15px; border-radius:7px; font-size:10px; font-weight:900; text-transform:uppercase; box-shadow:0 4px 10px rgba(5,150,105,.15); }
-        .secondary-btn { background:#f1f5f9; color:#475569; padding:9px 15px; border-radius:7px; font-size:10px; font-weight:900; text-transform:uppercase; }
-        .danger-btn { background:#fee2e2; color:#b91c1c; padding:9px 15px; border-radius:7px; font-size:10px; font-weight:900; text-transform:uppercase; }
-        .choice-card { background:white; border:1px solid #e2e8f0; border-radius:15px; padding:24px; display:flex; flex-direction:column; gap:7px; }
-        .choice-card:hover { border-color:#60a5fa; background:#f8fbff; }
-        .choice-num { font-size:10px; font-weight:900; color:#2563eb; }
-        .choice-card b { font-size:17px; font-weight:900; color:#0f172a; }
-        .choice-card small { color:#64748b; font-size:11px; }
-        .toolbar { margin-bottom:12px; }
-        .toolbar input { max-width:380px; background:white; }
-        .sub-card { border:1px solid #e2e8f0; border-radius:10px; padding:14px; background:#f8fafc; }
-        .report-sheet { max-width:850px; margin:auto; }
-        .report-sheet h1 { font-size:22px; font-weight:900; color:#065f46; }
-        .report-sheet h2 { font-size:25px; font-weight:900; margin-top:10px; }
-        .report-sheet h3 { font-size:12px; font-weight:900; text-transform:uppercase; color:#065f46; border-bottom:1px solid #d1fae5; padding-bottom:5px; margin-top:20px; }
-        .report-score { font-size:44px; font-weight:900; color:#059669; margin:12px 0; }
-        .report-line { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
-        @media(max-width:700px){ .section-header{align-items:flex-start;flex-direction:column}.section-header .primary-btn{width:100%}.section-card{padding:22px} }
-        @media print { nav,.back-btn,.primary-btn,.secondary-btn,.danger-btn,.section-header{display:none!important}.report-sheet{box-shadow:none!important;border:none!important} body{background:white!important} }
-
-        .form-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 1.5rem; margin-bottom: 1.5rem; }
-        label { font-weight: 800; color: #64748b; font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem; display: block; }
-        select, input, textarea { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.85rem; width: 100%; }
-        .pro-tag { background: #0f172a; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; margin-bottom: 15px; display: inline-block; }
-        .player-card { padding: 0.9rem 1rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.15s; }
-        .player-card:hover { background: #f8fafc; }
-        .session-row { padding: 0.75rem 0.25rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
-        .session-row:last-child { border-bottom: none; }
-        .btn-mini { font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
-        .assessment-field { min-width: 0; }
-    
-        /* V8 — Fix dropdown visibility */
-        select,
-        select option {
-            color: #0f172a !important;
-            background-color: #ffffff !important;
-            -webkit-text-fill-color: #0f172a !important;
+        .form-card.bg-white, .bg-white.rounded-xl {
+            background: #121722 !important;
+            border-color: #1E293B !important;
+            color: #CBD5E1 !important;
         }
 
-        select:focus {
-            color: #0f172a !important;
-            background-color: #ffffff !important;
-            outline: none;
-            border-color: #10b981 !important;
+        label {
+            font-weight: 800 !important;
+            color: #94A3B8 !important;
+            font-size: 0.65rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: 0.25rem !important;
+            display: block !important;
         }
 
-        /* Keep dropdowns readable inside dark-themed areas too */
-        .bg-slate-900 select,
-        .bg-slate-900 select option {
-            color: #0f172a !important;
-            background-color: #ffffff !important;
-            -webkit-text-fill-color: #0f172a !important;
-        }
-
-
-        /* Form controls must remain readable even when a parent uses dark text styles. */
-        input, textarea, select {
-            color: #0f172a !important;
-            -webkit-text-fill-color: #0f172a !important;
-            background-color: #ffffff !important;
-            border-color: #94a3b8 !important;
-            color-scheme: light;
-            opacity: 1 !important;
+        input, select, textarea {
+            background: #0B0E14 !important;
+            color: #F1F5F9 !important;
+            -webkit-text-fill-color: #F1F5F9 !important;
+            border: 1px solid #1E293B !important;
+            border-radius: 6px !important;
+            padding: 7px 10px !important;
+            font-size: 0.85rem !important;
+            width: 100% !important;
+            min-height: 38px !important;
+            transition: border-color 0.15s, box-shadow 0.15s !important;
         }
         input::placeholder, textarea::placeholder {
-            color: #475569 !important;
-            -webkit-text-fill-color: #475569 !important;
+            color: #64748B !important;
+            -webkit-text-fill-color: #64748B !important;
             opacity: 1 !important;
         }
+        input:focus, select:focus, textarea:focus {
+            outline: 2px solid rgba(16, 185, 129, 0.3) !important;
+            border-color: #10B981 !important;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
+        }
         select option, select optgroup {
-            color: #0f172a !important;
-            -webkit-text-fill-color: #0f172a !important;
-            background-color: #ffffff !important;
-        }
-        input:focus, textarea:focus, select:focus {
-            color: #0f172a !important;
-            -webkit-text-fill-color: #0f172a !important;
-            background-color: #ffffff !important;
-            border-color: #059669 !important;
-            outline: 2px solid rgba(5, 150, 105, .18);
-            outline-offset: 1px;
-        }
-        label {
-            color:#334155 !important;
+            color: #F1F5F9 !important;
+            -webkit-text-fill-color: #F1F5F9 !important;
+            background-color: #0F131A !important;
         }
 
-
-        /* Coach's Lens UX polish — v8 */
-        html { scroll-behavior:smooth; }
-        body { -webkit-font-smoothing:antialiased; }
-        button, input, select, textarea { font:inherit; }
-        button { -webkit-tap-highlight-color:transparent; }
-        input, select, textarea { color:#0f172a !important; background:#fff; border:1px solid #cbd5e1; min-height:42px; }
-        input::placeholder, textarea::placeholder { color:#94a3b8; opacity:1; }
-        input:focus, select:focus, textarea:focus { outline:3px solid rgba(249,115,22,.14); border-color:#f97316; box-shadow:0 0 0 1px #f97316; }
-        button:focus-visible { outline:3px solid rgba(249,115,22,.35); outline-offset:2px; }
-        .session-context-card { border:1px solid #dbe4ee; background:linear-gradient(180deg,#ffffff,#f8fafc); }
-        .context-head { display:flex; align-items:center; justify-content:space-between; gap:15px; }
-        .context-head p { margin-top:7px; color:#64748b; font-size:11px; line-height:1.5; }
-        .app-toast { position:fixed; right:22px; bottom:22px; z-index:999999; max-width:min(440px,calc(100vw - 32px)); padding:13px 16px; border-radius:12px; background:#0f172a; color:#fff; font-size:12px; font-weight:800; box-shadow:0 16px 40px rgba(2,8,23,.25); opacity:0; transform:translateY(10px); pointer-events:none; transition:.22s ease; }
-        .app-toast.show { opacity:1; transform:translateY(0); }
-        .app-toast.success { border-left:4px solid #10b981; }
-        .app-toast.error { border-left:4px solid #ef4444; }
-        .app-toast.info { border-left:4px solid #f97316; }
-        .mock-card { cursor:pointer; }
-        .mock-card:focus-visible { outline:3px solid #f97316; outline-offset:3px; }
-        .session-row { transition:.15s ease; }
-        .session-row:hover { background:#f8fafc; }
-        .btn-mini { min-height:32px; }
-        .report-sheet { overflow:hidden; }
-        @media(max-width:700px){
-            .app-toast { right:16px; bottom:16px; }
-            .form-card { padding:16px !important; }
-            .section-header { align-items:flex-start; flex-direction:column; }
-            .section-header button { width:100%; }
-            .mock-card { min-height:250px !important; }
-            .mock-metrics { width:100%; }
-            .mock-metrics div { min-width:0; flex:1; padding-right:10px; margin-right:10px; }
-            .mock-copy > p { font-size:15px; }
+        /* Buttons */
+        .primary-btn {
+            background: #059669 !important;
+            color: #FFFFFF !important;
+            padding: 8px 14px !important;
+            border-radius: 6px !important;
+            font-size: 10px !important;
+            font-weight: 900 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            border: 1px solid #10B981 !important;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.22) !important;
+            cursor: pointer;
+            transition: all 0.15s;
         }
-        @media(prefers-reduced-motion:reduce){ * { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
+        .primary-btn:hover {
+            background: #10B981 !important;
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.35) !important;
+        }
+
+        .secondary-btn {
+            background: #182030 !important;
+            color: #CBD5E1 !important;
+            padding: 8px 14px !important;
+            border-radius: 6px !important;
+            font-size: 10px !important;
+            font-weight: 900 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            border: 1px solid #1E293B !important;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .secondary-btn:hover {
+            background: #222C40 !important;
+            color: #FFFFFF !important;
+            border-color: #334155 !important;
+        }
+
+        .danger-btn {
+            background: rgba(220, 38, 38, 0.2) !important;
+            border: 1px solid rgba(239, 68, 68, 0.45) !important;
+            color: #FCA5A5 !important;
+            padding: 8px 14px !important;
+            border-radius: 6px !important;
+            font-size: 10px !important;
+            font-weight: 900 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .danger-btn:hover {
+            background: rgba(220, 38, 38, 0.35) !important;
+            color: #FFFFFF !important;
+            border-color: #EF4444 !important;
+        }
+
+        .pro-tag {
+            background: #182030 !important;
+            color: #34D399 !important;
+            border: 1px solid #059669 !important;
+            padding: 2px 8px !important;
+            border-radius: 4px !important;
+            font-size: 9px !important;
+            font-weight: 900 !important;
+            letter-spacing: 0.06em !important;
+            text-transform: uppercase !important;
+            margin-bottom: 12px !important;
+            display: inline-block !important;
+        }
+
+        /* Choice Cards & Subcards */
+        .choice-card {
+            background: #121722 !important;
+            border: 1px solid #1E293B !important;
+            border-radius: 8px !important;
+            padding: 18px !important;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .choice-card:hover {
+            border-color: #10B981 !important;
+            background: #161D2B !important;
+            transform: translateY(-2px);
+        }
+        .choice-num { font-size: 10px; font-weight: 900; color: #10B981 !important; font-family: monospace; }
+        .choice-card b { font-size: 15px; font-weight: 900; color: #FFFFFF !important; }
+        .choice-card small { color: #94A3B8 !important; font-size: 11px; }
+
+        .sub-card {
+            border: 1px solid #1E293B !important;
+            border-radius: 6px !important;
+            padding: 12px !important;
+            background: #182030 !important;
+            color: #CBD5E1 !important;
+        }
+        .stat-card, .score-card {
+            background: #121722 !important;
+            border: 1px solid #1E293B !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+        }
+        .stat-card span, .score-card span {
+            display: block;
+            font-size: 9px;
+            text-transform: uppercase;
+            font-weight: 800;
+            color: #64748B !important;
+            letter-spacing: 0.05em;
+        }
+        .stat-card b, .score-card b {
+            display: block;
+            font-size: 18px;
+            font-weight: 900;
+            margin-top: 3px;
+            color: #FFFFFF !important;
+        }
+
+        /* Player & Session Rows */
+        .player-card {
+            padding: 10px 14px !important;
+            border-bottom: 1px solid #1E293B !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.15s;
+            color: #E2E8F0;
+            background: #121722;
+        }
+        .player-card:hover { background: #182030 !important; }
+        .player-card b { color: #FFFFFF !important; }
+        .session-row {
+            padding: 9px 6px !important;
+            border-bottom: 1px solid #1E293B !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            color: #CBD5E1;
+            transition: background 0.15s;
+        }
+        .session-row:hover { background: #182030 !important; }
+        .session-row:last-child { border-bottom: none !important; }
+        .btn-mini {
+            font-size: 9px !important;
+            font-weight: 800 !important;
+            text-transform: uppercase !important;
+            padding: 4px 8px !important;
+            border-radius: 4px !important;
+            white-space: nowrap !important;
+            min-height: 28px !important;
+        }
+
+        .session-context-card {
+            border: 1px solid #1E293B !important;
+            background: #121722 !important;
+        }
+        .context-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .context-head p { margin-top: 4px; color: #94A3B8 !important; font-size: 11px; line-height: 1.4; }
+
+        /* Report Sheet */
+        .report-sheet {
+            max-width: 850px;
+            margin: auto;
+            background: #121722 !important;
+            border: 1px solid #1E293B !important;
+            color: #CBD5E1 !important;
+        }
+        .report-sheet h1 { font-size: 20px; font-weight: 900; color: #10B981 !important; letter-spacing: -0.02em; }
+        .report-sheet h2 { font-size: 22px; font-weight: 900; color: #FFFFFF !important; margin-top: 8px; }
+        .report-sheet h3 {
+            font-size: 11px; font-weight: 900; text-transform: uppercase;
+            color: #34D399 !important; border-bottom: 1px solid #1E293B;
+            padding-bottom: 4px; margin-top: 16px; letter-spacing: 0.05em;
+        }
+        .report-score { font-size: 38px; font-weight: 900; color: #10B981 !important; margin: 10px 0; }
+        .report-line {
+            display: flex; justify-content: space-between;
+            padding: 6px 0; border-bottom: 1px solid #1E293B; font-size: 12px;
+            color: #CBD5E1;
+        }
+        .report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+        .report-grid > div { padding: 10px; border: 1px solid #1E293B; border-radius: 6px; background: #182030; }
+        .report-grid span { display: block; font-size: 8px; font-weight: 900; color: #64748B; letter-spacing: 0.08em; }
+        .report-grid b { display: block; margin-top: 4px; font-size: 12px; color: #FFFFFF; }
+        @media(max-width: 700px){ .report-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        /* Coach Education Cards & Security Banner */
+        .education-security-banner {
+            display: flex; gap: 12px; align-items: flex-start;
+            background: rgba(16, 185, 129, 0.08) !important;
+            border: 1px solid rgba(16, 185, 129, 0.3) !important;
+            border-radius: 8px; padding: 14px; margin-bottom: 16px;
+        }
+        .education-shield { font-size: 22px; }
+        .education-security-banner b { display: block; color: #34D399 !important; font-size: 12px; }
+        .education-security-banner span { display: block; color: #94A3B8 !important; font-size: 11px; line-height: 1.5; margin-top: 2px; }
+        .education-card {
+            background: #121722 !important;
+            border: 1px solid #1E293B !important;
+            border-radius: 8px !important;
+            padding: 16px !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+            color: #CBD5E1;
+        }
+        .education-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .education-card h3 { font-size: 15px; font-weight: 900; color: #FFFFFF !important; margin-top: 10px; }
+        .education-card p { font-size: 11px; line-height: 1.5; color: #94A3B8 !important; margin-top: 6px; min-height: 48px; }
+        .education-meta {
+            display: flex; justify-content: space-between; gap: 8px;
+            margin-top: 10px; font-size: 9px; font-weight: 800; color: #64748B !important; text-transform: uppercase;
+        }
+        .education-lock { font-size: 9px; font-weight: 900; color: #10B981 !important; letter-spacing: 0.08em; }
+        .edu-tag { font-size: 9px; font-weight: 800; background: #182030; color: #34D399; border: 1px solid #1E293B; border-radius: 9999px; padding: 2px 7px; }
+        .education-toolbar { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 16px; }
+        @media(max-width: 700px){ .education-toolbar { grid-template-columns: 1fr; } .education-card p { min-height: auto; } }
+
+        /* App Toasts */
+        .app-toast {
+            position: fixed; right: 18px; bottom: 18px; z-index: 999999;
+            max-width: min(420px, calc(100vw - 32px));
+            padding: 11px 14px; border-radius: 8px;
+            background: #121722; color: #FFFFFF; font-size: 11px; font-weight: 800;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            border: 1px solid #1E293B;
+            opacity: 0; transform: translateY(8px); pointer-events: none; transition: 0.2s ease;
+        }
+        .app-toast.show { opacity: 1; transform: translateY(0); }
+        .app-toast.success { border-left: 3px solid #10B981; }
+        .app-toast.error { border-left: 3px solid #EF4444; }
+        .app-toast.info { border-left: 3px solid #38BDF8; }
+
         @media print {
-            .elite-sidebar, .mobile-topbar, .dashboard-topline, button, #appErrorToast, #appToast { display:none !important; }
-            #app-interface { margin-left:0 !important; }
-            .app-section { max-width:none !important; }
-            .report-sheet { box-shadow:none !important; border:0 !important; }
+            .elite-sidebar, .mobile-topbar, .dashboard-topline, button, #appErrorToast, #appToast { display: none !important; }
+            #app-interface { margin-left: 0 !important; background: white !important; color: black !important; }
+            .app-section { max-width: none !important; }
+            .report-sheet { box-shadow: none !important; border: 0 !important; background: white !important; color: black !important; }
+        }
+    
+        /* Modals and Overlays */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .modal-dialog {
+            background: #121722;
+            border: 1px solid #1E293B;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #1E293B;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
-        .report-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:18px 0; }
-        .report-grid > div { padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
-        .report-grid span { display:block; font-size:8px; font-weight:900; color:#94a3b8; letter-spacing:.1em; }
-        .report-grid b { display:block; margin-top:5px; font-size:12px; color:#0f172a; }
-        @media(max-width:700px){ .report-grid { grid-template-columns:repeat(2,1fr); } }
-
-        .education-security-banner{display:flex;gap:14px;align-items:flex-start;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:14px;padding:16px;margin-bottom:18px}.education-shield{font-size:25px}.education-security-banner b{display:block;color:#065f46;font-size:13px}.education-security-banner span{display:block;color:#047857;font-size:11px;line-height:1.6;margin-top:3px}.education-card{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.06)}.education-card-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.education-card h3{font-size:18px;font-weight:900;color:#0f172a;margin-top:14px}.education-card p{font-size:12px;line-height:1.6;color:#64748b;margin-top:6px;min-height:58px}.education-meta{display:flex;justify-content:space-between;gap:10px;margin-top:13px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase}.education-lock{font-size:9px;font-weight:900;color:#059669;letter-spacing:.08em}.edu-tag{font-size:9px;font-weight:800;background:#f1f5f9;color:#475569;border-radius:999px;padding:4px 7px}.education-toolbar{display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:18px}@media(max-width:700px){.education-toolbar{grid-template-columns:1fr}.education-card p{min-height:auto}}
-</style>
+    </style>
 </head>
-<body class="bg-slate-100 text-slate-900 font-sans">
+<body class="bg-[#0B0E14] text-slate-300 font-sans">
 
     <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-slate-900 p-4 hidden">
-        <div class="bg-white p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border-t-8 border-emerald-500">
-            <div class="text-center mb-6"><h1 class="text-4xl font-black italic tracking-tighter">COACH'S LENS</h1><p class="text-xs text-slate-500 font-bold mt-2">Secure Coach Access</p></div>
+    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-[#0B0E14] p-4 hidden">
+        <div class="bg-[#121722] p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800 border-t-4 border-t-emerald-500 text-slate-200">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-3">
+                    <span class="text-emerald-400 font-black text-xl italic">L</span>
+                </div>
+                <h1 class="text-3xl font-black italic tracking-tighter text-white">COACH'S LENS</h1>
+                <p class="text-xs text-slate-400 font-bold mt-1">High-Density Pro Analytics &amp; Coach Portal</p>
+            </div>
             <div id="loginPanel">
                 <form onsubmit="handleLogin(event)" class="space-y-4 text-left">
                     <div><label>Coach Email</label><input type="email" id="loginEmail" required autocomplete="email"></div>
                     <div><label>Password</label><input type="password" id="loginPass" required autocomplete="current-password"></div>
-                    <button type="submit" class="w-full bg-slate-900 text-emerald-400 font-black py-4 rounded-xl uppercase tracking-widest text-xs shadow-lg">Login</button>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl uppercase tracking-widest text-xs shadow-lg transition-colors cursor-pointer">Login</button>
                 </form>
-                <button onclick="showSignup()" class="w-full mt-3 bg-emerald-50 text-emerald-700 font-black py-3 rounded-xl uppercase tracking-widest text-xs">New coach? Sign up</button>
+                <button onclick="showSignup()" class="w-full mt-3 bg-slate-800/80 hover:bg-slate-800 text-emerald-400 border border-slate-700 font-black py-3 rounded-xl uppercase tracking-widest text-xs transition-colors cursor-pointer">New coach? Sign up</button>
             </div>
             <div id="signupPanel" class="hidden">
-                <div class="mb-4"><h2 class="text-xl font-black text-slate-900">Coach Registration</h2><p class="text-xs text-slate-500 mt-1">Create an account. Access remains locked until admin approval.</p></div>
+                <div class="mb-4"><h2 class="text-xl font-black text-white">Coach Registration</h2><p class="text-xs text-slate-400 mt-1">Create an account. Access remains locked until admin approval.</p></div>
                 <form id="signupForm" onsubmit="handleSignup(event)" class="space-y-4 text-left">
                     <div><label>Full Name</label><input id="signupName" required maxlength="100" autocomplete="name"></div>
                     <div><label>Email</label><input type="email" id="signupEmail" required autocomplete="email"></div>
-                    <div><label>Password</label><input type="password" id="signupPass" required minlength="8" autocomplete="new-password"><p class="text-[10px] text-slate-500 mt-1">Minimum 8 characters.</p></div>
+                    <div><label>Password</label><input type="password" id="signupPass" required minlength="8" autocomplete="new-password"><p class="text-[10px] text-slate-400 mt-1">Minimum 8 characters.</p></div>
                     <div><label>Confirm Password</label><input type="password" id="signupPassConfirm" required minlength="8" autocomplete="new-password"></div>
-                    <button type="submit" class="w-full bg-emerald-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs shadow-lg">Create Account</button>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl uppercase tracking-widest text-xs shadow-lg transition-colors cursor-pointer">Create Account</button>
                 </form>
-                <button onclick="showLogin()" class="w-full mt-3 bg-slate-100 text-slate-700 font-black py-3 rounded-xl uppercase tracking-widest text-xs">Back to Login</button>
+                <button onclick="showLogin()" class="w-full mt-3 bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700 font-black py-3 rounded-xl uppercase tracking-widest text-xs transition-colors cursor-pointer">Back to Login</button>
             </div>
             <div id="statusPanel" class="hidden text-center">
-                <div class="text-4xl mb-3">🔐</div><h2 id="statusTitle" class="text-xl font-black text-slate-900"></h2><p id="statusMessage" class="text-sm text-slate-600 leading-6 mt-3"></p><input type="hidden" id="verifyEmail">
+                <div class="text-4xl mb-3">🔐</div><h2 id="statusTitle" class="text-xl font-black text-white"></h2><p id="statusMessage" class="text-sm text-slate-300 leading-6 mt-3"></p><input type="hidden" id="verifyEmail">
                 <div id="statusAction" class="mt-5"></div>
             </div>
         </div>
@@ -2279,14 +3023,20 @@
 
     <!-- MAIN APP INTERFACE -->
     <div id="app-interface" class="hidden">
+        <!-- SIDEBAR BACKDROP FOR MOBILE -->
+        <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
+
         <!-- ELITE SIDEBAR -->
         <aside id="eliteSidebar" class="elite-sidebar">
             <div class="brand-block">
-                <div class="brand-mark">♟</div>
-                <div>
-                    <div class="brand-title">COACH'S <span>LENS</span></div>
-                    <div class="brand-subtitle">ELITE</div>
+                <div class="flex items-center gap-2.5">
+                    <div class="brand-mark">♟</div>
+                    <div>
+                        <div class="brand-title">COACH'S <span>LENS</span></div>
+                        <div class="brand-subtitle">ELITE</div>
+                    </div>
                 </div>
+                <button onclick="closeMobileSidebar()" class="sidebar-close-btn" aria-label="Close Sidebar">✕</button>
             </div>
 
             <div class="sidebar-nav">
@@ -2331,9 +3081,9 @@
         </aside>
 
         <div class="mobile-topbar">
-            <button onclick="toggleSidebar()" class="hamburger">☰</button>
+            <button onclick="toggleSidebar()" class="hamburger" aria-label="Toggle Navigation Menu">☰</button>
             <div class="mobile-brand">COACH'S <span>LENS</span></div>
-            <button onclick="showHome()" class="mobile-home">⌂</button>
+            <button onclick="showHome()" class="mobile-home" aria-label="Go to Home">⌂</button>
         </div>
 
         <div class="max-w-[1100px] mx-auto p-5 md:p-7">
@@ -2415,13 +3165,37 @@
                     <div>
                         <button onclick="showHome()" class="back-btn">← Home</button>
                         <h2>PLAYER DATABASE</h2>
-                        <p>Profiling &amp; Technical Data</p>
+                        <p>Squad Roster, Profiles &amp; Technical Baseline</p>
                     </div>
-                    <button onclick="openNewPlayerPage()" class="primary-btn">+ New Player</button>
+                    <div class="flex items-center gap-2">
+                        <span id="playerCountBadge" class="text-[10px] font-black px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">0 Players</span>
+                        <button onclick="openNewPlayerPage()" class="primary-btn flex items-center gap-1"><span>＋</span> Add Player</button>
+                    </div>
                 </div>
 
-                <div class="toolbar">
-                    <input type="text" id="searchBox" placeholder="Search players..." oninput="filterPlayers(this.value)">
+                <!-- SEARCH & FILTER TOOLBAR -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                    <div class="sm:col-span-1">
+                        <input type="text" id="searchBox" placeholder="Search by name, Player ID (CL...), jersey..." oninput="filterPlayers()">
+                    </div>
+                    <div>
+                        <select id="playerRoleFilter" onchange="filterPlayers()">
+                            <option value="">All Playing Roles</option>
+                            <option value="Batter">Batter</option>
+                            <option value="Bowler">Bowler</option>
+                            <option value="All rounder">All Rounder</option>
+                            <option value="WK batter">Wicket Keeper Batter</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select id="playerLevelFilter" onchange="filterPlayers()">
+                            <option value="">All Development Levels</option>
+                            <option value="Beginner">Beginner</option>
+                            <option value="Development">Development</option>
+                            <option value="Elite">Elite</option>
+                            <option value="Professional">Professional</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="bg-white rounded-xl shadow border overflow-hidden">
@@ -2430,64 +3204,283 @@
             </div>
 
             <!-- NEW PLAYER PAGE -->
-            <div id="newPlayerSection" class="app-section hidden">
-                <div class="section-header">
+            <div id="newPlayerSection" class="app-section hidden max-w-4xl mx-auto">
+                <!-- TOP BACK LINK -->
+                <button onclick="openSection('players')" class="text-[11px] font-bold text-slate-400 hover:text-white uppercase tracking-widest flex items-center gap-1.5 transition-colors mb-4 cursor-pointer">
+                    <span>←</span> BACK TO PLAYER DATABASE
+                </button>
+
+                <!-- HEADER WITH TITLE & FLOATING ID BADGE -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                     <div>
-                        <button onclick="openSection('players')" class="back-btn">← Player Database</button>
-                        <h2>NEW PLAYER</h2>
-                        <p>Create a new player profile</p>
+                        <span class="text-[11px] font-extrabold uppercase tracking-widest text-[#F97316]">PLAYER REGISTRATION</span>
+                        <h1 class="text-3xl sm:text-4xl font-serif font-black text-white tracking-tight mt-1 mb-1">Create New Player</h1>
+                        <p class="text-xs sm:text-sm text-slate-400 font-normal">Build a complete player profile for coaching and performance tracking.</p>
+                    </div>
+
+                    <!-- FLOATING PLAYER ID BOX -->
+                    <div class="bg-[#080e1a] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl min-w-[220px] shrink-0">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">PLAYER ID</div>
+                        <div class="flex items-center gap-1 my-1">
+                            <span class="text-2xl sm:text-3xl font-mono font-black text-[#F97316]">CL</span>
+                            <span id="np_display_player_id_dots" class="text-2xl sm:text-3xl font-mono font-black text-[#F97316] tracking-[0.25em]">•••••••••</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] font-mono text-amber-400 bg-orange-950/30 px-2 py-1 rounded border border-orange-800/40">
+                            <span id="np_display_player_id_full" class="font-bold">CL---------</span>
+                            <button type="button" onclick="copyPendingPlayerId()" class="text-[10px] text-amber-300 hover:text-white underline cursor-pointer">Copy</button>
+                        </div>
+                        <p class="text-[9px] text-slate-400 mt-1.5 font-medium leading-tight">Generated automatically and cannot be edited.</p>
                     </div>
                 </div>
 
-                <div class="form-card border-l-8 border-emerald-500">
-                    <span class="pro-tag">Player Profile</span>
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
-                        <div class="md:col-span-2 xl:col-span-2"><label>Player Name</label><input type="text" id="np_name" autocomplete="off"></div>
-                        <div><label>Date of Birth</label><input type="date" id="np_dob"></div>
-                        <div><label>Age</label><input type="number" id="np_age" min="0" max="100"></div>
-                        <div><label>Gender</label><select id="np_gender"><option value="">Select</option><option>Male</option><option>Female</option></select></div>
-                        <div><label>Primary Role</label><select id="np_role"><option>Batter</option><option>Bowler</option><option>All rounder</option><option>WK batter</option></select></div>
-                        <div><label>Secondary Role</label><input id="np_secondaryRole" placeholder="Optional"></div>
-                        <div><label>Batting Hand</label><select id="np_hand"><option>RH</option><option>LH</option></select></div>
-                        <div><label>Bowling Arm</label><select id="np_bowlingArm"><option value="">N/A</option><option>Right Arm</option><option>Left Arm</option></select></div>
-                        <div><label>Bowling Type</label><input id="np_bowlingType" placeholder="Fast / Spin / N/A"></div>
-                        <div><label>Batting Position</label><input id="np_battingPosition" placeholder="e.g. 1, 2, 3..."></div>
-                        <div><label>Playing Level</label><select id="np_level"><option>Beginner</option><option selected>Development</option><option>Elite</option><option>Professional</option></select></div>
-                        <div><label>Contact</label><input id="np_contact" placeholder="Phone / Email"></div>
+                <!-- MAIN FORM CONTAINER -->
+                <div class="bg-[#0f172a] rounded-2xl border border-slate-800/90 shadow-2xl p-6 sm:p-8">
+                    <!-- SECTION 1: BASIC PROFILE -->
+                    <div class="mb-8">
+                        <div class="text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
+                            <span>BASIC PROFILE</span>
+                            <span class="text-[10px] text-slate-400 font-medium">Fields marked with <b class="text-[#F97316]">*</b> are required</span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">NAME <span class="text-[#F97316]">*</span></label>
+                                <input type="text" id="np_name" placeholder="Full player name" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors" autocomplete="off">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">DATE OF BIRTH</label>
+                                <input type="date" id="np_dob" onchange="calculateAgeFromDob('np_dob', 'np_age')" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">AGE</label>
+                                <input type="number" id="np_age" min="4" max="99" placeholder="Age" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">GENDER</label>
+                                <select id="np_gender" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                    <option value="">Select</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">CONTACT</label>
+                                <input type="text" id="np_contact" placeholder="Phone / contact details" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">JERSEY / SQUAD #</label>
+                                <input type="text" id="np_jersey" placeholder="e.g. 18" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="flex flex-col sm:flex-row gap-3 mt-6 pt-5 border-t border-slate-200">
-                        <button onclick="saveNewPlayer()" class="primary-btn flex-1">Create Player</button>
-                        <button onclick="openSection('players')" class="secondary-btn flex-1">Cancel</button>
+                    <!-- SECTION 2: CRICKET PROFILE -->
+                    <div class="mb-6">
+                        <div class="text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
+                            <span>CRICKET PROFILE</span>
+                            <span class="text-[10px] text-slate-400 font-medium">Technical Specialization</span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PRIMARY ROLE <span class="text-[#F97316]">*</span></label>
+                                <select id="np_role" onchange="onRoleChange('np')" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                    <option value="Batter">Batter</option>
+                                    <option value="Bowler">Bowler</option>
+                                    <option value="All rounder">All rounder</option>
+                                    <option value="WK batter">WK batter</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">SECONDARY ROLE</label>
+                                <input type="text" id="np_secondaryRole" placeholder="Optional focus / specialty" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+
+                            <!-- BATTING PROFILE (LEFT COLUMN: BATTING HAND & BATTING ORDER) -->
+                            <div class="space-y-5">
+                                <div>
+                                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">BATTING HAND</label>
+                                    <select id="np_hand" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                        <option value="RH">Right Hand (RH)</option>
+                                        <option value="LH">Left Hand (LH)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">BATTING ORDER</label>
+                                    <select id="np_battingPosition" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                        <option value="Opener">Opener</option>
+                                        <option value="Top order" selected>Top order</option>
+                                        <option value="Middle order">Middle order</option>
+                                        <option value="Lower order">Lower order</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- BOWLING PROFILE (RIGHT COLUMN: BOWLING ARM & BOWLING TYPE) -->
+                            <div id="np_bowling_container" class="space-y-5">
+                                <div>
+                                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">BOWLING ARM</label>
+                                    <select id="np_bowlingArm" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                        <option value="Right Arm">Right Arm</option>
+                                        <option value="Left Arm">Left Arm</option>
+                                        <option value="N/A">N/A</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">BOWLING TYPE</label>
+                                    <input type="text" id="np_bowlingType" placeholder="Fast / Medium / Spin (Off-break, Leg-spin)" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PLAYING LEVEL</label>
+                                <select id="np_level" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
+                                    <option value="Beginner">Beginner</option>
+                                    <option value="Development" selected>Development</option>
+                                    <option value="Elite">Elite</option>
+                                    <option value="Professional">Professional</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PARENT / EMERGENCY CONTACT</label>
+                                <input type="text" id="np_emergencyContact" placeholder="Emergency contact / parent details" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">COACHING NOTES &amp; OBSERVATIONS</label>
+                                <textarea id="np_notes" rows="3" placeholder="Initial observations, development goals, baseline notes..." class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACTIONS -->
+                    <div class="flex flex-col sm:flex-row items-center gap-3.5 pt-6 border-t border-slate-800/80">
+                        <button onclick="saveNewPlayer()" class="w-full sm:w-auto min-w-[180px] bg-[#F97316] hover:bg-[#EA580C] text-white font-black text-sm uppercase tracking-wider py-3 px-6 rounded-xl shadow-lg shadow-orange-950/40 cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2">
+                            <span>Create Player</span>
+                        </button>
+                        <button onclick="openSection('players')" class="w-full sm:w-auto bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-sm uppercase tracking-wider py-3 px-6 rounded-xl cursor-pointer transition-colors">
+                            Cancel
+                        </button>
                     </div>
                 </div>
             </div>
 
             <!-- PLAYER DETAIL -->
             <div id="playerDetailSection" class="app-section hidden">
-                <button onclick="openSection('players')" class="back-btn mb-4">← Player Database</button>
+                <div class="flex items-center justify-between mb-4">
+                    <button onclick="openSection('players')" class="back-btn">← Back to Player Database</button>
+                    <button onclick="openNewSession()" class="primary-btn text-xs">+ Conduct Assessment</button>
+                </div>
+                
                 <div class="form-card border-l-8 border-emerald-500">
-                    <span class="pro-tag">Player Profile</span>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div><label>Player Name</label><input type="text" id="pf_name"></div>
-                        <div><label>Date of Birth</label><input type="date" id="pf_dob"></div>
-                        <div><label>Age</label><input type="number" id="pf_age"></div>
-                        <div><label>Gender</label><select id="pf_gender"><option>Male</option><option>Female</option><option>Other</option></select></div>
-                        <div><label>Primary Role</label><select id="pf_role"><option>Batter</option><option>Bowler</option><option>All rounder</option><option>WK batter</option></select></div>
-                        <div><label>Secondary Role</label><input type="text" id="pf_secondary" placeholder="Optional"></div>
-                        <div><label>Batting Hand</label><select id="pf_hand"><option>RH</option><option>LH</option></select></div>
-                        <div><label>Bowling Arm</label><select id="pf_bowlingArm"><option>Right Arm</option><option>Left Arm</option><option>Not Applicable</option></select></div>
-                        <div><label>Bowling Type</label><input type="text" id="pf_bowlingType" placeholder="Fast / Spin / N/A"></div>
-                        <div><label>Batting Position</label><input type="number" id="pf_battingPosition" min="1" max="11"></div>
-                        <div><label>Playing Level</label><select id="pf_level"><option>Beginner</option><option>Development</option><option>Elite</option><option>Professional</option></select></div>
-                        <div><label>Contact</label><input type="text" id="pf_contact"></div>
+                    <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                        <div class="flex items-center gap-2.5"><span class="pro-tag !mb-0">Edit Player Profile</span><div class="flex items-center gap-1.5 bg-orange-950/40 border border-orange-800/60 px-2.5 py-0.5 rounded-lg"><span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">ID:</span><span id="pf_playerId_badge" class="font-mono text-xs font-black text-[#F97316] tracking-wider">CL---------</span><button type="button" onclick="copyPlayerIdBadge()" title="Copy Player ID" class="text-[10px] text-amber-400 hover:text-white underline ml-1 cursor-pointer font-bold">Copy</button></div></div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="saveProfile()" class="primary-btn !py-1.5 !px-3">Save Profile</button>
+                            <button onclick="confirmDeletePlayer()" class="danger-btn !py-1.5 !px-3">Delete</button>
+                        </div>
                     </div>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="saveProfile()" class="primary-btn">Save Profile</button>
-                        <button onclick="confirmDeletePlayer()" class="danger-btn">Delete Player</button>
+
+                    <!-- PROFILE DETAILS GRID -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label>Player Name <span class="text-emerald-400">*</span></label>
+                            <input type="text" id="pf_name">
+                        </div>
+                        <div>
+                            <label>Jersey #</label>
+                            <input type="text" id="pf_jersey" placeholder="e.g. 18">
+                        </div>
+                        <div>
+                            <label>Gender</label>
+                            <select id="pf_gender">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Date of Birth</label>
+                            <input type="date" id="pf_dob" onchange="calculateAgeFromDob('pf_dob', 'pf_age')">
+                        </div>
+                        <div>
+                            <label>Age</label>
+                            <input type="number" id="pf_age" min="4" max="99">
+                        </div>
+                        <div>
+                            <label>Playing Level</label>
+                            <select id="pf_level">
+                                <option value="Beginner">Beginner</option>
+                                <option value="Development">Development</option>
+                                <option value="Elite">Elite</option>
+                                <option value="Professional">Professional</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label>Primary Role</label>
+                            <select id="pf_role" onchange="onRoleChange('pf')">
+                                <option value="Batter">Batter</option>
+                                <option value="Bowler">Bowler</option>
+                                <option value="All rounder">All rounder</option>
+                                <option value="WK batter">WK batter</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Secondary Role</label>
+                            <input type="text" id="pf_secondary" placeholder="Optional focus / specialty">
+                        </div>
+
+                        <!-- BATTING PROFILE (LEFT: HAND & ORDER) -->
+                        <div class="space-y-4">
+                            <div>
+                                <label>Batting Hand</label>
+                                <select id="pf_hand">
+                                    <option value="RH">Right Hand (RH)</option>
+                                    <option value="LH">Left Hand (LH)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Batting Order</label>
+                                <select id="pf_battingPosition">
+                                    <option value="Opener">Opener</option>
+                                    <option value="Top order">Top order</option>
+                                    <option value="Middle order">Middle order</option>
+                                    <option value="Lower order">Lower order</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- BOWLING PROFILE (RIGHT: ARM & TYPE) -->
+                        <div id="pf_bowling_container" class="space-y-4">
+                            <div>
+                                <label>Bowling Arm</label>
+                                <select id="pf_bowlingArm">
+                                    <option value="Right Arm">Right Arm</option>
+                                    <option value="Left Arm">Left Arm</option>
+                                    <option value="N/A">Not Applicable</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Bowling Type</label>
+                                <input type="text" id="pf_bowlingType" placeholder="Fast / Medium / Spin">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label>Player Contact</label>
+                            <input type="text" id="pf_contact" placeholder="Phone / Email">
+                        </div>
+                        <div>
+                            <label>Emergency / Parent Contact</label>
+                            <input type="text" id="pf_emergencyContact" placeholder="Contact Person">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label>Coaching Notes / Observations</label>
+                            <textarea id="pf_notes" rows="2" placeholder="Long-term development goals, notes..."></textarea>
+                        </div>
                     </div>
                 </div>
-
                 <div id="playerSnapshot" class="mb-5"></div>
                 <div id="playerDayNotesProfile" class="mb-5"></div>
 
@@ -2631,176 +3624,23 @@
                                 <option>Team Training</option>
                                 <option>Technical Correction</option>
                                 <option>Batting Session</option>
-                                <option>Bowling Session</option>
-                                <option>Wicketkeeping Session</option>
-                                <option>Individual Skill Development</option>
-                            </select>
-                        </div>
-                        <div><label>Duration (min)</label><input type="number" id="cs_duration" value="90"></div>
-                        <div><label>Surface</label><input type="text" id="cs_surface" placeholder="Turf / Matting / Grass"></div>
-                        <div><label>Conditions</label><input type="text" id="cs_conditions" placeholder="Optional"></div>
-                        <div class="md:col-span-2">
-                            <label>Players</label>
-                            <select id="cs_player"></select>
-                            <p id="cs_player_hint" class="text-[9px] text-slate-400 mt-1">For team sessions, select a player only when needed for a player note.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- OBJECTIVE -->
-                <div class="form-card">
-                    <span class="pro-tag">1 · SESSION OBJECTIVE</span>
-                    <label>What was the objective of the session?</label>
-                    <textarea id="cs_objective" class="large-note" placeholder="What did you want the player/team to achieve today?"></textarea>
-                </div>
-
-                <!-- OBJECTIVE ACHIEVEMENT -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-emerald-600">2 · OBJECTIVE ACHIEVEMENT</span>
-                    <label>Was the objective achieved?</label>
-                    <div class="achievement-grid">
-                        <button type="button" class="achievement-btn" data-value="Yes" onclick="setObjectiveResult('Yes')">✓ Yes</button>
-                        <button type="button" class="achievement-btn" data-value="Partially" onclick="setObjectiveResult('Partially')">≈ Partially</button>
-                        <button type="button" class="achievement-btn" data-value="No" onclick="setObjectiveResult('No')">× No</button>
-                    </div>
-                    <input type="hidden" id="cs_objectiveResult" value="">
-                    <label class="mt-4">Why?</label>
-                    <textarea id="cs_objectiveReason" class="note-box" placeholder="Briefly explain the result..."></textarea>
-                </div>
-
-                <!-- WHAT WENT WELL -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-emerald-600">3 · WHAT WENT WELL</span>
-                    <label>What all went well?</label>
-                    <textarea id="cs_wentWell" class="large-note" placeholder="Positive observations, good responses, successful drills, improvements, intensity, execution..."></textarea>
-                </div>
-
-                <!-- WHAT CAN IMPROVE -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-red-600">4 · WHAT CAN BE IMPROVED</span>
-                    <label>What all can be improved?</label>
-                    <textarea id="cs_improve" class="large-note" placeholder="Areas that need more work, technical/tactical issues, communication, intensity, execution..."></textarea>
-                </div>
-
-                <!-- COACH'S DAY NOTE -->
-                <div class="form-card coach-note-card">
-                    <span class="pro-tag !bg-slate-800">5 · COACH'S DAY NOTE</span>
-                    <label>Overall coach's note</label>
-                    <textarea id="cs_dayNote" class="day-note" placeholder="Write freely about the session. This is your overall coaching reflection for the day..."></textarea>
-                </div>
-
-                <!-- PLAYER NOTES -->
-                <div class="form-card">
-                    <div class="flex justify-between items-center gap-3 mb-3">
-                        <div>
-                            <span class="pro-tag !bg-purple-600">6 · PLAYER DAY NOTES</span>
-                            <p class="text-[10px] text-slate-400 mt-1">Individual observations from today's session. Each note is linked automatically to that player's profile.</p>
-                        </div>
-                        <button type="button" onclick="addPlayerDayNote()" class="primary-btn whitespace-nowrap">+ Add Player Note</button>
-                    </div>
-                    <div id="playerDayNotes"></div>
-                    <div id="noPlayerNotes" class="empty-note">No player notes added yet.</div>
-                </div>
-
-                <!-- NEXT ACTION -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-amber-600">7 · NEXT ACTION</span>
-                    <label>What should happen next?</label>
-                    <textarea id="cs_next" class="large-note" placeholder="Next session focus, follow-up, reassessment or action..."></textarea>
-                </div>
-
-                <!-- SAVE -->
-                <div class="form-card bg-slate-900 text-white">
-                    <div class="flex gap-2">
-                        <button onclick="saveCoachingSession()" class="bg-emerald-500 text-slate-900 font-black py-4 rounded-xl flex-1 uppercase tracking-widest text-xs">Save Coaching Session</button>
-                        <button onclick="openSection('coaching')" class="bg-white text-slate-900 font-black py-4 rounded-xl px-6 uppercase tracking-widest text-xs">Cancel</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ASSESSMENT FORM -->
-            <div id="assessmentSection" class="app-section hidden">
-                <button onclick="cancelSessionForm()" class="back-btn mb-4">← Player</button>
-                <h2 id="formTitle" class="text-lg font-black mb-4 text-slate-800"></h2>
-                <div class="form-card">
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div><label>Assessment Date</label><input type="date" id="sessionDate"></div>
-                    </div>
-                </div>
-                <div class="form-card session-context-card">
-                    <div class="context-head">
-                        <div><span class="pro-tag !bg-slate-800">SESSION CONTEXT</span><p>Capture the conditions around this assessment so future reviews have useful context.</p></div>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                        <div><label for="sessionType">Session Type</label><select id="sessionType"><option>Training</option><option>Match</option><option>Recovery</option><option>Assessment</option></select></div>
-                        <div><label for="sessionDuration">Duration (min)</label><input id="sessionDuration" type="number" min="0" step="5" placeholder="90"></div>
-                        <div><label for="sessionSurface">Surface</label><input id="sessionSurface" placeholder="Turf / Matting / Indoor"></div>
-                        <div><label for="sessionConditions">Conditions</label><input id="sessionConditions" placeholder="Weather / light / pitch"></div>
-                    </div>
-                    <div class="grid md:grid-cols-2 gap-4 mt-4">
-                        <div><label for="sessionObjective">Objective</label><input id="sessionObjective" placeholder="What are we trying to improve?"></div>
-                        <div><label for="sessionBaseline">Baseline</label><input id="sessionBaseline" placeholder="Starting point / previous observation"></div>
-                        <div><label for="sessionIntervention">Intervention</label><textarea id="sessionIntervention" rows="3" placeholder="What did the coach change or cue?"></textarea></div>
-                        <div><label for="sessionResponse">Player Response</label><textarea id="sessionResponse" rows="3" placeholder="How did the player respond?"></textarea></div>
-                        <div><label for="sessionOutcome">Outcome</label><textarea id="sessionOutcome" rows="3" placeholder="What changed by the end?"></textarea></div>
-                        <div><label for="sessionNextAction">Next Action</label><textarea id="sessionNextAction" rows="3" placeholder="Next session focus / follow-up"></textarea></div>
-                    </div>
-                    <div class="grid md:grid-cols-2 gap-4 mt-4">
-                        <div><label for="sessionTags">Tags</label><input id="sessionTags" placeholder="#headposition #trigger #release"></div>
-                        <div><label for="sessionVideoUrl">Video URL</label><input id="sessionVideoUrl" type="url" placeholder="https://..."></div>
-                    </div>
-                </div>
-                <div id="dynamicSections"></div>
-                <div class="form-card bg-slate-900 text-white shadow-2xl">
-                    <label class="text-emerald-400">Coach Observations</label>
-                    <textarea id="pSummary" class="text-slate-900 h-40 w-full p-4 rounded-md mb-4" placeholder="Technical observations..."></textarea>
-                    <div class="flex gap-2">
-                        <button onclick="saveSession()" class="bg-emerald-500 text-slate-900 font-black py-4 rounded-xl flex-1 uppercase tracking-widest text-xs">Save Assessment</button>
-                        <button onclick="downloadCurrentFormPDF()" class="bg-white text-slate-900 font-black py-4 rounded-xl px-6 uppercase tracking-widest text-xs">PDF</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-<div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
-<div id="appErrorToast" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;max-width:420px;padding:14px 16px;border-radius:10px;background:#7f1d1d;color:#fff;font:14px/1.4 system-ui, sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25)"></div>
-<script>
-window.addEventListener('error', function(e) {
-  console.error(e.error || e.message);
-  var t=document.getElementById('appErrorToast');
-  if(t){ t.textContent='App error: '+(e.message||'Unknown JavaScript error'); t.style.display='block'; }
-});
-window.addEventListener('unhandledrejection', function(e) {
-  console.error(e.reason);
-  var t=document.getElementById('appErrorToast');
-  if(t){ t.textContent='Something went wrong: '+((e.reason&&e.reason.message)||String(e.reason)); t.style.display='block'; }
-});
-</script>
-
-    <!-- EDUCATION UPLOAD / EDIT MODAL -->
-    <div id="educationModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-auto shadow-2xl">
-            <div class="p-6 border-b flex justify-between items-center"><div><span class="pro-tag !bg-emerald-600">COACH EDUCATION</span><h3 class="text-xl font-black text-slate-900 mt-2">Publish Study Material</h3></div><button onclick="closeEducationModal()" class="text-slate-400 text-2xl">×</button></div>
-            <form id="educationForm" onsubmit="saveEducationMaterial(event)" class="p-6 space-y-4">
-                <input type="hidden" id="edu_id">
-                <div><label>Title</label><input id="edu_title" required maxlength="160" placeholder="e.g. Guide to Coaching Fast Bowlers"></div>
-                <div class="grid md:grid-cols-2 gap-4"><div><label>Category</label><select id="edu_category" required></select></div><div><label>Level</label><select id="edu_level"><option>Foundation</option><option>Intermediate</option><option>Advanced</option><option>Elite</option></select></div></div>
-                <div><label>Short Description</label><textarea id="edu_description" rows="3" maxlength="500" placeholder="What will the coach learn from this material?"></textarea></div>
-                <div class="grid md:grid-cols-2 gap-4"><div><label>Author</label><input id="edu_author" maxlength="120"></div><div><label>Organisation / Source</label><input id="edu_source" maxlength="160"></div></div>
-                <div><label>Tags</label><input id="edu_tags" maxlength="250" placeholder="pace, mechanics, seam, workload"></div>
-                <div><label>Coach access</label><div id="edu_access" class="mt-2"></div><p class="text-[11px] text-slate-500 mt-1">Only approved, active coaches selected here can open this material.</p></div>
-                <div><label>PDF file</label><input id="edu_file" type="file" accept="application/pdf,.pdf"><p class="text-[11px] text-slate-500 mt-1">PDF only. Maximum 25 MB. Existing material can be edited without replacing its file.</p></div>
-                <div class="flex gap-2 justify-end pt-3"><button type="button" onclick="closeEducationModal()" class="secondary-btn">Cancel</button><button type="submit" class="primary-btn">Publish Securely</button></div>
-            </form>
-        </div>
-    </div>
-
-    <!-- EDUCATION VIEWER -->
-    <div id="educationViewer" class="fixed inset-0 z-[110] hidden bg-slate-950">
-        <div class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-slate-800 text-white"><div><b id="educationViewerTitle">Study Material</b><div id="educationViewerMeta" class="text-[10px] text-slate-400"></div></div><button onclick="closeEducationViewer()" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-bold">Close</button></div>
-        <div class="h-[calc(100vh-4rem)] p-2 md:p-4"><iframe id="educationPdfFrame" title="Private coach education PDF" class="w-full h-full rounded-lg bg-slate-800" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></div>
-    </div>
-
-</body>
-</html>
+                                <option>Bowling Sesx��[�r����Slx˭ :���SZ��l��)y<��g	,	D,�]�b�׽�]ߣ�}�<I�w�'��ԾI`����Z"j�E����+��_����L�3ф��{-Ӎ��!�R���>�����"Y���֨Kƙ�6�j�a���������v�Pܒ�A��Q7OA���Y��֢4��F�m͕�=;�F(O���W��v�ɘ�l�V�=�|#i�H����c�����:��J���]B�܉��  r;n>v�����v&."��B�WpG�4rNk[�lH��tƒ���)�02�c=	�f0zr�8�D K9
+���M���_%��9�_�"�r���_�^АH��Xb(1����,"c����o#��I��e�^�ǫϿvҿ���v�:�q�L-h
+��&��5P���8��������!��`���曁.`��u��?�T�)�D���ѯ �����+�K
+��:�	��J�er�r�L��R_2l��xd&R #Rz[���V���~ q�zt�#�X���Zh��w;w��No�,!_�&YB��|�
+��)jh-U��� +o�j���<�E�-�0�r�G�M\$b7�,�L�`�`��Q�D|C��Q[��H�s�*�X:>1��"r9�·5�T��0����9|4�f���&*��϶P��C���IYOl!�'���('�,�i���r�j�7�J �N ����2K��?�7�Q�_��$������	�ӹ�v>���a��<���isf��8��ss�Bx�oh�ՒS��R��dt�t �K�Lh�.��RA�(&�1��yyHɧ.k���K*����.dyZ1׏
+� �Ӗ[��Z���1V�HǞ���0>�v,�T�%u)�Yz=�e��5�*���;a���Ҧ3҃�U<+����[����b$Y�|,�~K�G��dvL��I\�')�U�A��C5]MD
+�3��%�s�86V���� �K���:ilY?&!U�O��"��8��*���O��n~"�����8��G�k*U0�9#��
+�@�P:���
+<a.�,�M�5�i"Ld}����kw���懌%�NY\��ͺy6��gz��1ࣗyJ��4��0!���Z�?���3�:˾I��F�0��Zr�5�a�/���x朙gF���I0��}D!/k�tn�Q�̘:!-��V��a*N���[p[������n#7�V�H���(�9{�4�93��]�z��0;�a���&�-7IXK`M��� N�0���Z SI6w�ޔ�C91"fр�Xt�µ+��`����\�7�F���Es�}��ꙋe��e��j%p�:���%&VK����cG�gĶ%k�,��y�½��T�Έ��Z5f �����x�6ll�D4;�$:>���F�.�3���F�a�8��j�ب��%K��������/&��%�������h4������	$���ΰ�n��WM��۱�eCU�z�P<+�B�u�B:�0�Z'Bg�L~�GV�
+�T��C�lg|�R�s� �z���ֈvǝ��(w��cj�� ��<�|��vf'���ρq��e8�F��x�Nhsj�����6��U>K�	&>RvL�@��
+|�vO�4GN�ڟ�+-��[.��ѹOvZ�{���n��9j�5����O�}��9�_n��ȕ7�h�6I�c�s����#��{���ss�
+��7dp{uռ�T=1���lcv��P&=�%�.*-���z��1�/ n��s����N���v�6�-�d��(@���?Д+I�XG��uAŶZo�<VT���i�o�S�P\sI�Q����n�	2f��
+�L�M���$�U�0�EVL����VXb����#��I
+t|4VLe�MٖC�Cs�O�+B��C"&	P�?�v��RS�x�Dv}M�<{dn��D��p���.�t�x�e�@� ����B�2HC쟱�`���;"��]f�AcK�q�|IL���.ƙ��� �(:�*Q����G�5�ψEtڷ-}�Bn�?��mr�oC���`^����Jx�������%".A �&��x�U���Gg�>r2u�)� Q3�I�S����O�[���� |S?���6�zd�Ro�;K��F�?��t���� ��V�.b��%?�	�@(�S[;�����Eo\�!��+�Q(�sr���/WkX;ߕ�}�I9l�9𶝎gڮ�5D�T-��H��pI�oi�0o1ޱ���1��R�1�X_�71'.���d�4���0�qV��Z�Z�U��$W�^4=��	P�,@!(9�.1^�kK�ؙ�!�+E>୼���8����ZL�ɹ�UVZ��/E
+!^����=dNM�g�����Ń
+�}0�I���;:�ֿ(�h�ʇ�N"M\{
+Qݴ6G���F�#�CM[83�mc��^dY�ac�0,.뤟L ���Z�ӹ�z�u�w[-دӺ���ޥ�g>M�j��t"�tL!�j?�	8���ɩV]��c���Q	_�I �'Rz�dTH>O�4��n3�&��2�����'2��ׄ�!��ϯ��p�lLD��9&�A��R�ˀts.c��?���u����4-��f08����E]��J�A!�]�{�'�y��W�V�j��cVB��p�k�M��>GJD�Ի�"6q70���5��g�|�|\���#�X���愇�
+�~i��=��M���!�`]���]1�pc�j�N:Bx�DoA�����S-;��Uh/?y�R�%�mk��҅;&|˴Ա�D���Q�_�*�IҎ}��}M�����M����z����z�P�8���ع�Ѝ�l��`�mǿ��qp��߼z�!�H�\;v�d�-��5��鯑��$P
+Xl��Y��;��6�b�.��(���f���τ~��s�����R�q�%����
+�ۏ񾞱V,|�>,��	�E�_{�K|Z��ւ���_�jDw�ok��m�Z1K�U�y���o��u�J$h��K�(8I���rO���z���+���o�u/�6r�k�׆�x(�T���~��C�Z�7�O_��N�  �� H�K
