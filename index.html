@@ -582,10 +582,22 @@
             if (pass !== confirm) return notify('Passwords do not match.');
             try {
                 const cred = await createUserWithEmailAndPassword(auth, email, pass);
-                await sendEmailVerification(cred.user);
-                await setDoc(doc(db, 'users', cred.user.uid), {
-                    name, email, role: ROLE_VIEWER, status: 'pending', active: false,
-                    emailVerified: false, createdAt: serverTimestamp()
+
+await setDoc(doc(db, 'users', cred.user.uid), {
+    name,
+    email,
+    role: ROLE_VIEWER,
+    status: 'pending',
+    active: false,
+    emailVerified: false,
+    createdAt: serverTimestamp()
+});
+
+try {
+    await sendEmailVerification(cred.user);
+} catch (verificationError) {
+    console.warn('Verification email could not be sent:', verificationError);
+}
                 });
                 await signOut(auth);
                 document.getElementById('signupForm')?.reset();
