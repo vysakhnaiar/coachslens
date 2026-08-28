@@ -598,7 +598,7 @@ try {
 } catch (verificationError) {
     console.warn('Verification email could not be sent:', verificationError);
 }
-                });
+                
                 await signOut(auth);
                 document.getElementById('signupForm')?.reset();
                 showStatus('Registration received', 'Please verify your email. Your Coach’s Lens account will remain locked until an administrator approves your registration.', '<button onclick="showLogin()" class="w-full bg-slate-900 text-emerald-400 font-black py-3 rounded-xl uppercase tracking-widest text-xs">Back to Login</button>');
