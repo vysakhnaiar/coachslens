@@ -74,10 +74,13 @@
                 show: (role) => ROLE_BATTING.includes(role),
                 fields: [
                     { id: 'b_h', label: 'Handle Position', options: ['Ideal (Middle-MH)', 'Top(TH)', 'Bottom(BH)'] },
+                    { id: 'b_hh', label: 'Hands on Handle', options: ['Middle', 'Top', 'Bottom', 'Apart'] },
+                    { id: 'b_knee', label: 'Knee Position', options: ['Flexed', 'Bent', 'Braced'] },
                     { id: 'b_tv', label: 'Top Hand V', options: ['Ideal (Splice-SP)', 'Outer(BSO)', 'Inner(BSI)'] },
                     { id: 'b_bv', label: 'Bottom Hand V', options: ['Ideal (Splice-SP)', 'Outer(BSO)', 'Inner(BSI)'] },
                     { id: 'b_g', label: 'Guard Position', options: ['Middle(MS)', 'Leg(LS)', 'Off(OS)'] },
                     { id: 'b_w', label: 'Stance Width', options: ['Shoulder Width(SW)', 'Narrow(NW)', 'Wide(WD)'] },
+                    { id: 'b_align', label: 'Stance Alignment', options: ['Open', 'Close', 'Ideal'] },
                     { id: 'b_wt', label: 'Weight Dist.', options: ['Balanced(WEB)', 'Back Foot(WBF)', 'Front Foot(WFF)'] }
                 ]
             },
@@ -90,11 +93,33 @@
                     { id: 'b_tt', label: 'Trigger Timing', options: ['Ideal (On Time-OT)', 'Early(EY)', 'Late(LT)'] },
                     { id: 'b_mp', label: 'Movement Pattern', options: ['Minimal(M)', 'Excessive(E)'] },
                     { id: 'b_hm', label: 'Head Movement', options: ['Stable', 'Falling'] },
-                    { id: 'b_im', label: 'Initial Movement', options: ['Ideal', 'Early', 'Late'] },
+                    { id: 'b_im', label: 'Initial Movement Pattern', options: ['Backfoot Back & Across', 'Front Foot Press', 'Backfoot Across', 'Backfoot Back', 'Front Foot Across', 'Front & Back Foot Back and Across'] },
                     { id: 'b_ff', label: 'Front Foot Movement', options: ['Ideal', 'Limited', 'Excessive'] },
                     { id: 'b_bf', label: 'Back Foot Movement', options: ['Ideal', 'Limited', 'Excessive'] },
                     { id: 'b_bal', label: 'Balance', options: ['Excellent', 'Good', 'Needs Improvement'] },
                     { id: 'b_align', label: 'Alignment', options: ['Ideal', 'Open', 'Closed'] }
+                ]
+            },
+            {
+                key: 'shots_footwork', title: "Batting: Shots & Footwork",
+                color: 'border-blue-500', tag: '!bg-blue-500',
+                show: (role) => ROLE_BATTING.includes(role),
+                fields: [
+                    { id: 'sf_swing', label: 'Negotiating Swing', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sf_line', label: 'Judging Line & Length', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sf_front', label: 'Front Foot', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sf_back', label: 'Back Foot', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] }
+                ]
+            },
+            {
+                key: 'shots_footwork_spin', title: "Batting: Shots & Footwork vs Spin",
+                color: 'border-indigo-500', tag: '!bg-indigo-500',
+                show: (role) => ROLE_BATTING.includes(role),
+                fields: [
+                    { id: 'sfs_spin', label: 'Negotiating Spin', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sfs_line', label: 'Judging Line & Length', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sfs_front', label: 'Front Foot', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
+                    { id: 'sfs_back', label: 'Back Foot', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] }
                 ]
             },
             {
@@ -3097,6 +3122,61 @@ try {
         }
 
     </style>
+
+<style id="coachs-lens-modern-redesign">
+:root{
+ --bg:#0b1220;--surface:#111c2e;--surface-2:#17253a;--surface-3:#1d2d45;
+ --text:#f8fafc;--text-2:#cbd5e1;--muted:#94a3b8;--line:#2b3b53;
+ --primary:#38bdf8;--primary-strong:#0ea5e9;--success:#22c55e;--warning:#f59e0b;
+ --radius:16px;--shadow:0 12px 32px rgba(0,0,0,.22)
+}
+html,body{background:var(--bg)!important;color:var(--text)!important}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.01em}
+*{box-sizing:border-box}
+header,.header,.topbar,.navbar{background:rgba(11,18,32,.92)!important;border-color:var(--line)!important;backdrop-filter:blur(14px)}
+main,.main-content,.content{background:transparent!important}
+.card,.panel,.section,.assessment-section,.modal-content,.dashboard-card,.stat-card{background:linear-gradient(145deg,var(--surface),#101a2b)!important;border:1px solid var(--line)!important;border-radius:var(--radius)!important;box-shadow:var(--shadow)!important}
+button,.btn{border-radius:11px!important;border:1px solid transparent!important;font-weight:700!important;transition:transform .18s ease,box-shadow .18s ease,background .18s ease!important}
+button:hover,.btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.2)}
+button.primary,.btn-primary,[class*="primary"]{background:var(--primary-strong)!important;color:#fff!important}
+input,select,textarea{background:var(--surface-2)!important;color:var(--text)!important;border:1px solid var(--line)!important;border-radius:10px!important;min-height:42px}
+input::placeholder,textarea::placeholder{color:var(--muted)!important}
+label,.label{color:var(--text-2)!important;font-weight:600}
+h1,h2,h3,h4,h5{color:var(--text)!important;letter-spacing:-.02em}
+p,span,td,li{color:inherit}
+small,.muted,.secondary-text{color:var(--muted)!important}
+a{color:var(--primary)!important}
+nav a,.nav-item{border-radius:10px!important;color:var(--text-2)!important}
+nav a:hover,.nav-item:hover,nav a.active,.nav-item.active{background:rgba(56,189,248,.12)!important;color:var(--primary)!important}
+table{border-color:var(--line)!important}th{background:var(--surface-2)!important;color:var(--text-2)!important}td{border-color:var(--line)!important}
+.badge,.tag,.chip{border-radius:999px!important;background:var(--surface-3)!important;color:var(--text-2)!important;border:1px solid var(--line)!important}
+.progress,.progress-bar{border-radius:999px!important}
+hr{border-color:var(--line)!important;opacity:.7}
+/* Make assessment choices clear and readable */
+.option,.option-card,.choice,.rating-option,.radio-card{background:var(--surface-2)!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--text)!important}
+.option:hover,.option-card:hover,.choice:hover,.rating-option:hover,.radio-card:hover{border-color:var(--primary)!important;background:#20334d!important}
+.option.selected,.option-card.selected,.choice.selected,.rating-option.selected,.radio-card.selected,[aria-checked="true"]{background:rgba(14,165,233,.2)!important;border-color:var(--primary)!important;color:#fff!important}
+@media(max-width:800px){.card,.panel,.section,.assessment-section{border-radius:13px!important}.container,.content{padding-left:14px!important;padding-right:14px!important}}
+</style>
+
+<style id="coachs-lens-modern-redesign">
+:root{--cl-bg:#08111f;--cl-panel:#101d31;--cl-panel2:#16263d;--cl-border:#29405d;--cl-text:#f8fafc;--cl-muted:#a8b7ca;--cl-accent:#38bdf8;--cl-accent2:#0ea5e9;--cl-success:#22c55e;--cl-warning:#f59e0b;}
+html,body{background:linear-gradient(135deg,#08111f 0%,#0d1728 55%,#101d31 100%)!important;color:var(--cl-text)!important;}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important;letter-spacing:.01em;}
+header,nav,.sidebar,.topbar,.app-header{background:rgba(8,17,31,.92)!important;border-color:var(--cl-border)!important;backdrop-filter:blur(16px);}
+.card,.panel,.section,.assessment-card,.stat-card,.modal-content,.content-card{background:linear-gradient(145deg,rgba(22,38,61,.96),rgba(15,29,49,.96))!important;border:1px solid var(--cl-border)!important;border-radius:18px!important;box-shadow:0 12px 35px rgba(0,0,0,.18)!important;}
+h1,h2,h3,h4,h5,h6,.title,.section-title{color:#fff!important;font-weight:750!important;letter-spacing:-.02em;}
+p,label,span,td,th,small,.text-muted,.subtitle{color:var(--cl-muted)!important;}
+input,select,textarea{background:#0d1a2d!important;color:#f8fafc!important;border:1px solid #36506f!important;border-radius:10px!important;min-height:42px;}
+input:focus,select:focus,textarea:focus{outline:none!important;border-color:var(--cl-accent)!important;box-shadow:0 0 0 3px rgba(56,189,248,.16)!important;}
+button,.btn,.primary-btn{border-radius:10px!important;font-weight:700!important;transition:.2s ease!important;}
+button.primary,.btn-primary,.primary-btn{background:linear-gradient(135deg,var(--cl-accent),var(--cl-accent2))!important;color:#062033!important;border:0!important;box-shadow:0 8px 20px rgba(14,165,233,.22)!important;}
+button:hover,.btn:hover{transform:translateY(-1px);}
+.nav-item.active,.tab.active,.selected{background:rgba(56,189,248,.14)!important;color:#7dd3fc!important;border-color:rgba(56,189,248,.45)!important;}
+hr{border-color:var(--cl-border)!important;}
+.badge,.pill,.status-pill{border-radius:999px!important;}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#08111f}::-webkit-scrollbar-thumb{background:#29405d;border-radius:999px}::-webkit-scrollbar-thumb:hover{background:#3d5d80}
+</style>
 </head>
 <body class="bg-[#0B0E14] text-slate-300 font-sans">
 
@@ -3967,4 +4047,26 @@ try {
     <!-- TOAST NOTIFICATION -->
     <div id="appToast" class="app-toast"></div>
 </body>
-</html>
+</html><style id="coachslens-visual-redesign-v2">
+body{background:radial-gradient(circle at 15% 0%,#132742 0%,#08111f 42%,#070d17 100%)!important;color:#f8fbff!important}
+#dynamicSections{gap:24px!important}
+#dynamicSections .form-card{position:relative!important;overflow:hidden!important;padding:24px!important;margin:0!important;background:linear-gradient(145deg,rgba(18,34,55,.98),rgba(12,24,40,.98))!important;border:1px solid #2b405b!important;border-top:0!important;border-radius:20px!important;box-shadow:0 18px 45px rgba(0,0,0,.2)!important}
+#dynamicSections .form-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#45bdf5,#1675b7)}
+#dynamicSections .pro-tag{display:inline-flex!important;align-items:center!important;margin:0 0 22px!important;padding:0!important;background:none!important;color:#dcecff!important;font-size:15px!important;font-weight:800!important;letter-spacing:.08em!important;text-transform:uppercase!important}
+#dynamicSections .pro-tag:before{content:"";width:8px;height:8px;border-radius:50%;background:#45bdf5;box-shadow:0 0 0 5px rgba(69,189,245,.12);margin-right:12px}
+#dynamicSections .metric-score-field{padding:16px!important;background:rgba(8,17,31,.52)!important;border:1px solid #263b56!important;border-radius:14px!important;transition:.18s!important}
+#dynamicSections .metric-score-field:hover{transform:translateY(-2px)!important;border-color:#477196!important;background:rgba(13,29,48,.85)!important}
+#dynamicSections .metric-score-field label{color:#dbe8f7!important;font-size:12px!important;font-weight:750!important;letter-spacing:.04em!important;text-transform:uppercase!important}
+#dynamicSections .metric-score-field select{margin-top:10px!important;min-height:48px!important;padding:0 14px!important;background:#0b192c!important;border:1px solid #36516f!important;border-radius:11px!important;color:#f8fbff!important;font-size:14px!important;font-weight:650!important}
+#dynamicSections .metric-score-field select:focus{border-color:#45bdf5!important;box-shadow:0 0 0 3px rgba(69,189,245,.14)!important}
+#dynamicSections .metric-score-field>div:last-of-type{margin-top:16px!important;padding-top:13px!important;border-top:1px solid #263b56!important}
+#dynamicSections .metric-score-field>div:last-of-type>span{color:#8fa8c3!important;font-size:10px!important;letter-spacing:.12em!important}
+#dynamicSections .score-pills{display:flex!important;gap:6px!important}
+#dynamicSections .score-pill-btn{width:30px!important;height:30px!important;min-width:30px!important;padding:0!important;border:1px solid #263b56!important;border-radius:9px!important;background:#172940!important;color:#b8cbe0!important;font-size:12px!important;font-weight:800!important;box-shadow:none!important}
+#dynamicSections .score-pill-btn:hover{background:#24415f!important;border-color:#5a88af!important;color:#fff!important;transform:none!important}
+#dynamicSections .score-pill-btn.active{background:linear-gradient(135deg,#38bdf8,#168bd0)!important;border-color:#68d0ff!important;color:#041321!important;box-shadow:0 5px 14px rgba(56,189,248,.22)!important}
+#dynamicSections .score-pill-btn.score-clear-btn{color:#8fa8c3!important;background:#142236!important}
+#dynamicSections .score-pill-btn.score-clear-btn.active{background:#26384d!important;color:#e4eef9!important;border-color:#55718e!important;box-shadow:none!important}
+#dynamicSections .score-badge{color:#829ab3!important;font-size:11px!important;font-weight:800!important;padding:4px 7px!important;border-radius:7px!important;background:#142236!important}
+#dynamicSections .score-badge.has-score{color:#8edcff!important;background:rgba(56,189,248,.12)!important}
+</style>
