@@ -531,7 +531,8 @@ async function testCoachLensAI() {
         const coachLensAI = httpsCallable(functions, 'coachLensAI');
 
         // Build request payload - include playerId if a player is currently selected
-        const requestData = { prompt };
+        const requestData = {
+    playerId: selectedCoachLensPlayer, prompt };
         if (currentPlayer && currentPlayer.id) {
             requestData.playerId = currentPlayer.id;
             statusEl.textContent = `Analyzing ${currentPlayer.name || 'player'} data...`;
