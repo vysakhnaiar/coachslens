@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
-    <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://*.firebasestorage.app https://firebasestorage.googleapis.com https://www.google.com/recaptcha/ https://recaptcha.google.com/; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com; connect-src 'self' https://asia-south1-coach-s-lens.cloudfunctions.net https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com;">
+    <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' blob: https://*.firebasestorage.app https://firebasestorage.googleapis.com https://www.google.com/recaptcha/ https://recaptcha.google.com/; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com; connect-src 'self' https://asia-south1-coach-s-lens.cloudfunctions.net https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com;">
     <title>Coach's Lens - Pro Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -13,7 +13,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
         import { initializeAppCheck, ReCaptchaEnterpriseProvider, CustomProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
         import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, query, where, writeBatch, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-        import { getStorage, ref as storageRef, uploadBytes, getBlob, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
+        import { getStorage, ref as storageRef, uploadBytes, getBlob, deleteObject } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
@@ -197,12 +197,29 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
         const ROLE_ADMIN = 'admin';
         const ROLE_CONTRIBUTOR = 'contributor';
         const ROLE_VIEWER = 'viewer';
-        // Admin account. Firebase rules use the immutable UID for security;
-        // this email is used only as a visible/admin-account reference in the UI.
+        // This verified Firebase Auth email is the primary admin identity;
+        // the profile role alone never grants admin access.
         const PRIMARY_ADMIN_EMAIL = 'vyshakbnambiar@gmail.com';
 
+        function isPrimaryAdminProfile(profile = currentUserProfile) {
+            const user = auth.currentUser;
+            return !!user
+                && user.emailVerified
+                && user.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL
+                && !!profile
+                && profile.id === user.uid
+                && profile.role === ROLE_ADMIN
+                && profile.status === 'approved'
+                && profile.active === true;
+        }
+
         function hasEducationRole(...roles) {
-            return !!currentUserProfile && roles.includes(String(currentUserProfile.role || ROLE_VIEWER).toLowerCase());
+            if (!auth.currentUser?.emailVerified || !currentUserProfile
+                || currentUserProfile.status !== 'approved'
+                || currentUserProfile.active !== true) return false;
+            if (roles.includes(ROLE_ADMIN) && isPrimaryAdminProfile()) return true;
+            return currentUserProfile.role !== ROLE_ADMIN
+                && roles.includes(String(currentUserProfile.role || ROLE_VIEWER).toLowerCase());
         }
 
         async function loadCurrentUserProfile(user) {
@@ -236,7 +253,10 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             const snap = await getDocs(collection(db, 'users'));
             return snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(u => u.role !== ROLE_ADMIN && u.status === 'approved' && u.active === true)
+                .filter(u => [ROLE_VIEWER, ROLE_CONTRIBUTOR].includes(u.role)
+                    && u.status === 'approved'
+                    && u.active === true
+                    && u.emailVerified === true)
                 .map(u => u.id);
         }
 
@@ -267,7 +287,11 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
                 if (canManageEducation()) {
                     snap = await getDocs(collection(db, 'educationMaterials'));
                 } else {
-                    const q = query(collection(db, 'educationMaterials'), where('allowedCoachIds', 'array-contains', auth.currentUser.uid));
+                    const q = query(
+                        collection(db, 'educationMaterials'),
+                        where('status', '==', 'approved'),
+                        where('allowedCoachIds', 'array-contains', auth.currentUser.uid)
+                    );
                     snap = await getDocs(q);
                 }
                 educationMaterialsCache = snap.docs.map(d => ({ id:d.id, ...d.data() }))
@@ -366,7 +390,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             const tags = document.getElementById('edu_tags').value.split(',').map(x => x.trim()).filter(Boolean).slice(0,20);
             const file = document.getElementById('edu_file').files[0];
             const id = document.getElementById('edu_id').value.trim();
-            const allowedCoachIds = await getApprovedCoachIds();
             if (!title || !category) return notify('Title and category are required.', 'error');
             if (!id && !file) return notify('Please select a PDF file.', 'error');
             if (file && (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'))) return notify('Only PDF files are allowed.', 'error');
@@ -386,7 +409,7 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
                     uploadedPath = `educationRequests/${auth.currentUser.uid}/${requestRef.id}`;
                     await uploadBytes(storageRef(storage, uploadedPath), file, { contentType:'application/pdf', cacheControl:'private, max-age=0' });
                     await setDoc(requestRef, {
-                        title, category, level, description, author, source, tags, allowedCoachIds,
+                        title, category, level, description, author, source, tags, allowedCoachIds:[],
                         storagePath: uploadedPath,
                         status: 'pending',
                         createdAt: serverTimestamp(),
@@ -400,6 +423,7 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
                     return;
                 }
 
+                const allowedCoachIds = await getApprovedCoachIds();
                 const materialRef = id ? doc(db, 'educationMaterials', id) : doc(collection(db, 'educationMaterials'));
                 const oldSnap = id ? await getDoc(materialRef) : null;
                 const old = oldSnap?.exists() ? oldSnap.data() : null;
@@ -457,11 +481,16 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             const m = educationMaterialsCache.find(x => x.id === id);
             if (!m?.storagePath) return notify('PDF file is not available.');
             try {
-                const url = await getDownloadURL(storageRef(storage, m.storagePath));
                 const frame = document.getElementById('educationPdfFrame');
-                frame.src = url;
-                frame.removeAttribute('sandbox');
+                const oldUrl = frame.dataset.objectUrl;
+                if (oldUrl) URL.revokeObjectURL(oldUrl);
                 frame.dataset.objectUrl = '';
+                frame.src = '';
+                const fileBlob = await getBlob(storageRef(storage, m.storagePath));
+                const objectUrl = URL.createObjectURL(fileBlob);
+                frame.src = objectUrl;
+                frame.removeAttribute('sandbox');
+                frame.dataset.objectUrl = objectUrl;
                 document.getElementById('educationViewerTitle').innerText = m.title || 'Study Material';
                 document.getElementById('educationViewerMeta').innerText = `${m.category || 'Education'} · ${m.level || 'General'}${m.author ? ' · ' + m.author : ''}`;
                 document.getElementById('educationViewer').classList.remove('hidden');
@@ -768,16 +797,30 @@ try {
             const snap = await getDoc(doc(db, 'users', user.uid));
             if (!snap.exists()) return { ok:false, reason:'missing' };
             const profile = snap.data();
-            // Admin accounts created by the owner remain valid without status.
-            if (profile.role === ROLE_ADMIN && profile.active === true) return { ok:true, profile:{id:snap.id,...profile} };
             // Require Firebase's actual email_verified claim for coaches.
             if (!user.emailVerified) return { ok:false, reason:'verify', email:user.email || '' };
+            const completeProfile = { id:snap.id, ...profile };
+            if (profile.role === ROLE_ADMIN) {
+                return isPrimaryAdminProfile(completeProfile)
+                    ? { ok:true, profile:completeProfile }
+                    : { ok:false, reason:profile.status || 'pending', email:user.email || '' };
+            }
             // Mirror the verified state into Firestore without allowing role/status changes.
             if (profile.status === 'pending' && profile.emailVerified !== true) {
-                try { await updateDoc(doc(db, 'users', user.uid), { emailVerified:true, emailVerifiedAt:serverTimestamp() }); } catch(e) {}
+                try {
+                    await updateDoc(doc(db, 'users', user.uid), {
+                        emailVerified:true,
+                        emailVerifiedAt:serverTimestamp()
+                    });
+                } catch (err) {
+                    console.warn('Could not mirror verified email state:', err);
+                }
             }
-            if (profile.status !== 'approved' || profile.active !== true) return { ok:false, reason:profile.status || 'pending', email:user.email || '' };
-            return { ok:true, profile:{id:snap.id,...profile, emailVerified:true} };
+            if (profile.status !== 'approved' || profile.active !== true
+                || ![ROLE_VIEWER, ROLE_CONTRIBUTOR].includes(profile.role)) {
+                return { ok:false, reason:profile.status || 'pending', email:user.email || '' };
+            }
+            return { ok:true, profile:{...completeProfile, emailVerified:true} };
         }
 
         

@@ -1,0 +1,229 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasUserProfile(uid) {
+      return exists(userPath(uid));
+    }
+
+    function userProfile(uid) {
+      return get(userPath(uid)).data;
+    }
+
+    function isPrimaryAdminIdentity() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'vyshakbnambiar@gmail.com';
+    }
+
+    function isAdmin() {
+      return isPrimaryAdminIdentity()
+        && hasUserProfile(request.auth.uid)
+        && userProfile(request.auth.uid).role == 'admin'
+        && userProfile(request.auth.uid).status == 'approved'
+        && userProfile(request.auth.uid).active == true;
+    }
+
+    function isApprovedCoach() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && hasUserProfile(request.auth.uid)
+        && userProfile(request.auth.uid).role in ['viewer', 'contributor']
+        && userProfile(request.auth.uid).status == 'approved'
+        && userProfile(request.auth.uid).active == true;
+    }
+
+    function isContributor() {
+      return isApprovedCoach()
+        && userProfile(request.auth.uid).role == 'contributor';
+    }
+
+    function canUseOwnedCoachData() {
+      return isAdmin() || isApprovedCoach();
+    }
+
+    function ownsPlayer(playerId) {
+      let playerPath = /databases/$(database)/documents/players/$(playerId);
+      return canUseOwnedCoachData()
+        && exists(playerPath)
+        && get(playerPath).data.coachId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'name', 'email', 'role', 'status', 'active',
+          'emailVerified', 'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'name', 'email', 'role', 'status', 'active',
+          'emailVerified', 'createdAt'
+        ])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'viewer'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.active == false
+        && request.resource.data.emailVerified == false
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if (
+          signedIn()
+          && request.auth.uid == userId
+          && resource.data.role == 'viewer'
+          && resource.data.status == 'pending'
+          && resource.data.active == false
+          && request.auth.token.email_verified == true
+          && request.resource.data.emailVerified == true
+          && request.resource.data.emailVerifiedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['emailVerified', 'emailVerifiedAt'])
+        ) || (
+          isAdmin()
+          && (
+            (
+              resource.data.status == 'pending'
+              && resource.data.emailVerified == true
+              && request.resource.data.role in ['viewer', 'contributor']
+              && request.resource.data.status == 'approved'
+              && request.resource.data.active == true
+              && request.resource.data.approvedBy == request.auth.uid
+              && request.resource.data.approvedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['role', 'status', 'active', 'approvedAt', 'approvedBy'])
+            )
+            || (
+              resource.data.status == 'pending'
+              && request.resource.data.status == 'rejected'
+              && request.resource.data.active == false
+              && request.resource.data.rejectedBy == request.auth.uid
+              && request.resource.data.rejectedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'active', 'rejectedAt', 'rejectedBy'])
+            )
+            || (
+              resource.data.status == 'approved'
+              && request.resource.data.status == 'rejected'
+              && request.resource.data.active == false
+              && request.resource.data.revokedBy == request.auth.uid
+              && request.resource.data.revokedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'active', 'revokedAt', 'revokedBy'])
+            )
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /players/{playerId} {
+      allow read: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid;
+      allow create: if canUseOwnedCoachData()
+        && request.resource.data.coachId == request.auth.uid;
+      allow update: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid
+        && request.resource.data.coachId == resource.data.coachId;
+      allow delete: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid;
+
+      match /{childCollection}/{documentId} {
+        allow read: if childCollection in ['sessions', 'dayNotes']
+          && ownsPlayer(playerId);
+        allow create: if childCollection in ['sessions', 'dayNotes']
+          && ownsPlayer(playerId);
+        allow update: if childCollection in ['sessions', 'dayNotes']
+          && ownsPlayer(playerId);
+        allow delete: if childCollection in ['sessions', 'dayNotes']
+          && ownsPlayer(playerId);
+      }
+    }
+
+    match /coachingSessions/{sessionId} {
+      allow read, delete: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid;
+      allow create: if canUseOwnedCoachData()
+        && request.resource.data.coachId == request.auth.uid;
+      allow update: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid
+        && request.resource.data.coachId == resource.data.coachId;
+    }
+
+    match /matches/{matchId} {
+      allow read, delete: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid;
+      allow create: if canUseOwnedCoachData()
+        && request.resource.data.coachId == request.auth.uid;
+      allow update: if canUseOwnedCoachData()
+        && resource.data.coachId == request.auth.uid
+        && request.resource.data.coachId == resource.data.coachId;
+    }
+
+    match /educationMaterials/{materialId} {
+      allow get: if isAdmin() || (
+        isApprovedCoach()
+        && resource.data.status == 'approved'
+        && resource.data.allowedCoachIds is list
+        && request.auth.uid in resource.data.allowedCoachIds
+      );
+      allow list: if isAdmin() || (
+        isApprovedCoach()
+        && resource.data.status == 'approved'
+        && request.auth.uid in resource.data.allowedCoachIds
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /educationMaterialRequests/{requestId} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if isContributor()
+        && request.resource.data.keys().hasOnly([
+          'title', 'category', 'level', 'description', 'author', 'source',
+          'tags', 'allowedCoachIds', 'storagePath', 'status', 'createdAt',
+          'createdBy', 'createdByEmail'
+        ])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByEmail == request.auth.token.email
+        && request.resource.data.allowedCoachIds == []
+        && request.resource.data.storagePath
+          == 'educationRequests/' + request.auth.uid + '/' + requestId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && (
+          (
+            request.resource.data.status == 'approved'
+            && request.resource.data.approvedBy == request.auth.uid
+            && request.resource.data.approvedAt == request.time
+            && request.resource.data.approvedStoragePath == 'education/' + requestId
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'approvedAt', 'approvedBy', 'approvedStoragePath'])
+          )
+          || (
+            request.resource.data.status == 'rejected'
+            && request.resource.data.rejectedBy == request.auth.uid
+            && request.resource.data.rejectedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'rejectedAt', 'rejectedBy'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

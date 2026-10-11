@@ -4,6 +4,7 @@ const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const https = require("https");
 const admin = require("firebase-admin");
+const PRIMARY_ADMIN_EMAIL = "vyshakbnambiar@gmail.com";
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
@@ -29,12 +30,32 @@ setGlobalOptions({
  * Throws HttpsError if not authenticated.
  * SECURITY: Only extracts uid and email from auth, never exposes tokens or API keys.
  */
-function verifyAuth(request) {
+async function verifyAuth(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be signed in to use CoachLens AI.");
   }
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError("permission-denied", "Verify your email before using CoachLens AI.");
+  }
+
   const coachId = request.auth.uid;
   const email = request.auth.token.email || "";
+  const profileSnap = await db.collection("users").doc(coachId).get();
+  if (!profileSnap.exists) {
+    throw new HttpsError("permission-denied", "Your CoachLens account is not approved.");
+  }
+  const profile = profileSnap.data();
+  const isPrimaryAdmin = email.toLowerCase() === PRIMARY_ADMIN_EMAIL
+    && profile.role === "admin"
+    && profile.status === "approved"
+    && profile.active === true;
+  const isApprovedCoach = ["viewer", "contributor"].includes(profile.role)
+    && profile.status === "approved"
+    && profile.active === true;
+  if (!isPrimaryAdmin && !isApprovedCoach) {
+    throw new HttpsError("permission-denied", "Your CoachLens account is not approved.");
+  }
+
   return { coachId, email };
 }
 
@@ -71,14 +92,14 @@ function safePlayerProfile(playerDoc, coachId) {
 }
 
 /**
- * Securely load player sessions/technical assessments.
- * SECURITY: Queries scoped to coachId; slices to 5 for context.
+ * Securely load assessments from the already-authorized player's subcollection.
+ * SECURITY: The parent player ownership is verified before this helper is called.
  */
-async function loadPlayerSessions(playerId, coachId) {
+async function loadPlayerSessions(playerId) {
   const snap = await db
-    .collectionGroup("sessions")
-    .where("coachId", "==", coachId)
-    .where("playerId", "==", playerId)
+    .collection("players")
+    .doc(playerId)
+    .collection("sessions")
     .orderBy("date", "desc")
     .limit(10)
     .get();
@@ -108,14 +129,14 @@ async function loadPlayerSessions(playerId, coachId) {
 }
 
 /**
- * Securely load player day notes.
+ * Securely load notes from the already-authorized player's subcollection.
  * SECURITY: Only date, note, tags returned (no PII).
  */
-async function loadPlayerDayNotes(playerId, coachId) {
+async function loadPlayerDayNotes(playerId) {
   const snap = await db
-    .collectionGroup("dayNotes")
-    .where("coachId", "==", coachId)
-    .where("playerId", "==", playerId)
+    .collection("players")
+    .doc(playerId)
+    .collection("dayNotes")
     .orderBy("date", "desc")
     .limit(20)
     .get();
@@ -373,7 +394,7 @@ exports.coachLensAI = onCall(
   },
   async (request) => {
     // 1. AUTHENTICATION - required for all calls
-    const { coachId } = verifyAuth(request);
+    const { coachId } = await verifyAuth(request);
 
     const prompt = request.data?.prompt;
     const playerId = request.data?.playerId;
@@ -424,8 +445,8 @@ exports.coachLensAI = onCall(
 
           // PARALLEL: Load all other data concurrently
           const [sessions, notes, coaching, matches, education] = await Promise.all([
-            loadPlayerSessions(playerId, coachId),
-            loadPlayerDayNotes(playerId, coachId),
+            loadPlayerSessions(playerId),
+            loadPlayerDayNotes(playerId),
             loadCoachCoachingSessions(playerId, coachId),
             loadMatchRecords(playerId, coachId),
             loadEducationMaterials(coachId)

@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/(default)/documents/users/$(uid);
+    }
+
+    function hasUserProfile(uid) {
+      return firestore.exists(userPath(uid));
+    }
+
+    function userProfile(uid) {
+      return firestore.get(userPath(uid)).data;
+    }
+
+    function isPrimaryAdminIdentity() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'vyshakbnambiar@gmail.com';
+    }
+
+    function isAdmin() {
+      return isPrimaryAdminIdentity()
+        && hasUserProfile(request.auth.uid)
+        && userProfile(request.auth.uid).role == 'admin'
+        && userProfile(request.auth.uid).status == 'approved'
+        && userProfile(request.auth.uid).active == true;
+    }
+
+    function isApprovedCoach() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && hasUserProfile(request.auth.uid)
+        && userProfile(request.auth.uid).role in ['viewer', 'contributor']
+        && userProfile(request.auth.uid).status == 'approved'
+        && userProfile(request.auth.uid).active == true;
+    }
+
+    function isContributor() {
+      return isApprovedCoach()
+        && userProfile(request.auth.uid).role == 'contributor';
+    }
+
+    function isPdfUpload() {
+      return request.resource != null
+        && request.resource.contentType == 'application/pdf'
+        && request.resource.size <= 25 * 1024 * 1024;
+    }
+
+    function canReadMaterial(materialId) {
+      let materialPath =
+        /databases/(default)/documents/educationMaterials/$(materialId);
+      return isAdmin() || (
+        isApprovedCoach()
+        && firestore.exists(materialPath)
+        && firestore.get(materialPath).data.status == 'approved'
+        && firestore.get(materialPath).data.allowedCoachIds is list
+        && request.auth.uid in firestore.get(materialPath).data.allowedCoachIds
+      );
+    }
+
+    match /educationRequests/{uid}/{requestId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && isContributor()
+        && isPdfUpload();
+      allow update: if false;
+      allow delete: if isAdmin()
+        || (signedIn() && request.auth.uid == uid && isContributor());
+    }
+
+    match /education/{materialId} {
+      allow read: if canReadMaterial(materialId);
+      allow create, update: if isAdmin() && isPdfUpload();
+      allow delete: if isAdmin();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
