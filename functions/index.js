@@ -4,6 +4,19 @@ const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const https = require("https");
 const admin = require("firebase-admin");
+const {
+  buildPlayerContext,
+  selectLinkedCoachingSessions,
+  formatPartialContextWarning,
+  MAX_CONTEXT_BYTES,
+  MAX_CONTEXT_RECORDS,
+  MAX_UNORDERED_SCAN_RECORDS,
+  selectDatedRecords,
+  serializeAssessment,
+  serializeDayNote,
+  serializeMatch,
+  serializePlayerProfile,
+} = require("./coachLensAIContext");
 const PRIMARY_ADMIN_EMAIL = "vyshakbnambiar@gmail.com";
 
 // Initialize Firebase Admin
@@ -76,19 +89,33 @@ function safePlayerProfile(playerDoc, coachId) {
     throw new HttpsError("permission-denied", "Access denied: not the coach of this player.");
   }
 
-  return {
-    name: data.name || "Unknown",
-    playerId: data.playerId || "N/A",
-    age: data.age || "N/A",
-    role: data.role || "N/A",
-    secondaryRole: data.secondaryRole || "",
-    hand: data.hand || "N/A",
-    bowlingArm: data.bowlingArm || "N/A",
-    bowlingType: data.bowlingType || "N/A",
-    battingPosition: data.battingPosition || "N/A",
-    level: data.level || "N/A",
-    notes: data.notes ? data.notes.substring(0, 150) : "",
-  };
+  return serializePlayerProfile(data, playerDoc.id);
+}
+
+async function resolvePlayerDocument(playerReference, coachId) {
+  const documentSnap = await db.collection("players").doc(playerReference).get();
+  if (documentSnap.exists) {
+    if (documentSnap.data().coachId !== coachId) {
+      throw new HttpsError("permission-denied", "You do not have access to this player.");
+    }
+    return documentSnap;
+  }
+
+  const ownedPlayers = await db.collection("players")
+    .where("coachId", "==", coachId)
+    .where("playerId", "==", playerReference)
+    .limit(2)
+    .get();
+  if (ownedPlayers.empty) {
+    throw new HttpsError("not-found", "Player not found.");
+  }
+  if (ownedPlayers.size > 1) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This player ID matches multiple records in your squad. Select the player from the app list.",
+    );
+  }
+  return ownedPlayers.docs[0];
 }
 
 /**
@@ -96,36 +123,19 @@ function safePlayerProfile(playerDoc, coachId) {
  * SECURITY: The parent player ownership is verified before this helper is called.
  */
 async function loadPlayerSessions(playerId) {
-  const snap = await db
-    .collection("players")
-    .doc(playerId)
-    .collection("sessions")
-    .orderBy("date", "desc")
-    .limit(10)
-    .get();
-
-  const sessions = [];
-  snap.forEach(doc => {
-    const d = doc.data();
-    sessions.push({
-      date: d.date,
-      role: d.role || "N/A",
-      sessionType: d.sessionType || "Training",
-      duration: d.duration || null,
-      surface: d.surface || null,
-      conditions: d.conditions || null,
-      objective: d.objective || "",
-      baseline: d.baseline || "",
-      intervention: d.intervention || "",
-      response: d.response || "",
-      outcome: d.outcome || "",
-      nextAction: d.nextAction || "",
-      tags: d.tags || [],
-      videoUrl: d.videoUrl || "",
-      summary: d.summary ? d.summary.substring(0, 150) : null,
-    });
-  });
-  return sessions.slice(0, 5);
+  const sessions = db.collection("players").doc(playerId).collection("sessions");
+  const [orderedSnap, scanSnap] = await Promise.all([
+    sessions.orderBy("date", "desc").limit(21).get(),
+    sessions.limit(MAX_UNORDERED_SCAN_RECORDS + 1).get(),
+  ]);
+  return selectDatedRecords(
+    orderedSnap.docs.map(doc => ({ id: doc.id, data: doc.data() })),
+    scanSnap.docs.slice(0, MAX_UNORDERED_SCAN_RECORDS)
+      .map(doc => ({ id: doc.id, data: doc.data() })),
+    20,
+    doc => serializeAssessment(doc.id, doc.data, playerId),
+    { scanLimitReached: scanSnap.size > MAX_UNORDERED_SCAN_RECORDS },
+  );
 }
 
 /**
@@ -133,24 +143,19 @@ async function loadPlayerSessions(playerId) {
  * SECURITY: Only date, note, tags returned (no PII).
  */
 async function loadPlayerDayNotes(playerId) {
-  const snap = await db
-    .collection("players")
-    .doc(playerId)
-    .collection("dayNotes")
-    .orderBy("date", "desc")
-    .limit(20)
-    .get();
-
-  const notes = [];
-  snap.forEach(doc => {
-    const d = doc.data();
-    notes.push({
-      date: d.date,
-      note: d.note ? d.note.substring(0, 100) : "",
-      tags: d.tags || [],
-    });
-  });
-  return notes.slice(0, 5);
+  const dayNotes = db.collection("players").doc(playerId).collection("dayNotes");
+  const [orderedSnap, scanSnap] = await Promise.all([
+    dayNotes.orderBy("date", "desc").limit(31).get(),
+    dayNotes.limit(MAX_UNORDERED_SCAN_RECORDS + 1).get(),
+  ]);
+  return selectDatedRecords(
+    orderedSnap.docs.map(doc => ({ id: doc.id, data: doc.data() })),
+    scanSnap.docs.slice(0, MAX_UNORDERED_SCAN_RECORDS)
+      .map(doc => ({ id: doc.id, data: doc.data() })),
+    30,
+    doc => serializeDayNote(doc.id, doc.data, playerId),
+    { scanLimitReached: scanSnap.size > MAX_UNORDERED_SCAN_RECORDS },
+  );
 }
 
 /**
@@ -180,43 +185,72 @@ async function loadCoachCoachingSessions(playerId, coachId, sinceDate) {
   return sessions.slice(0, 3);
 }
 
+async function loadPlayerCoachingSessions(playerId, coachId) {
+  const directQueryLimit = MAX_CONTEXT_RECORDS + 1;
+  const teamScanLimit = MAX_UNORDERED_SCAN_RECORDS;
+  const sessions = db.collection("coachingSessions");
+  const [directSnap, directScanSnap, teamScanSnap, teamUnorderedScanSnap] = await Promise.all([
+    sessions
+      .where("coachId", "==", coachId)
+      .where("playerId", "==", playerId)
+      .orderBy("date", "desc")
+      .limit(directQueryLimit)
+      .get(),
+    sessions
+      .where("coachId", "==", coachId)
+      .where("playerId", "==", playerId)
+      .limit(teamScanLimit + 1)
+      .get(),
+    sessions
+      .where("coachId", "==", coachId)
+      .orderBy("date", "desc")
+      .limit(teamScanLimit + 1)
+      .get(),
+    sessions
+      .where("coachId", "==", coachId)
+      .limit(teamScanLimit + 1)
+      .get(),
+  ]);
+
+  return selectLinkedCoachingSessions(
+    directSnap.docs.map(doc => ({ id: doc.id, data: doc.data() })),
+    [
+      ...teamScanSnap.docs.slice(0, teamScanLimit),
+      ...teamUnorderedScanSnap.docs.slice(0, teamScanLimit),
+    ].map(doc => ({ id: doc.id, data: doc.data() })),
+    playerId,
+    {
+      maxRecords: MAX_CONTEXT_RECORDS,
+      directLimitReached: directSnap.size > MAX_CONTEXT_RECORDS
+        || directScanSnap.size > MAX_CONTEXT_RECORDS,
+      scanLimitReached: teamScanSnap.size > teamScanLimit
+        || teamUnorderedScanSnap.size > teamScanLimit,
+      directScannedDocs: directScanSnap.docs.slice(0, teamScanLimit)
+        .map(doc => ({ id: doc.id, data: doc.data() })),
+    },
+  );
+}
+
 /**
  * Securely load match records for a player.
  * SECURITY: Returns limited fields; no contact or internal notes.
  */
 async function loadMatchRecords(playerId, coachId) {
-  const snap = await db
-    .collection("matches")
+  const matches = db.collection("matches")
     .where("coachId", "==", coachId)
-    .where("playerId", "==", playerId)
-    .orderBy("date", "desc")
-    .limit(15)
-    .get();
-
-  const matches = [];
-  snap.forEach(doc => {
-    const m = doc.data();
-    matches.push({
-      date: m.date,
-      matchName: m.name || "Match",
-      result: m.result || "N/A",
-      runs: m.runs || 0,
-      balls: m.balls || 0,
-      fours: m.fours || 0,
-      sixes: m.sixes || 0,
-      battingAt: m.battingAt || null,
-      dismissalMode: m.dismissalMode || null,
-      overs: m.overs || null,
-      wickets: m.wickets || 0,
-      runsConceded: m.runsConceded || 0,
-      dotBalls: m.dotBalls || 0,
-      catches: m.catches || 0,
-      runOuts: m.runOuts || 0,
-      missedCatches: m.missedCatches || 0,
-      coachPlayerNotes: m.coachPlayerNotes ? m.coachPlayerNotes.substring(0, 150) : "",
-    });
-  });
-  return matches.slice(0, 5);
+    .where("playerId", "==", playerId);
+  const [orderedSnap, scanSnap] = await Promise.all([
+    matches.orderBy("date", "desc").limit(21).get(),
+    matches.limit(MAX_UNORDERED_SCAN_RECORDS + 1).get(),
+  ]);
+  return selectDatedRecords(
+    orderedSnap.docs.map(doc => ({ id: doc.id, data: doc.data() })),
+    scanSnap.docs.slice(0, MAX_UNORDERED_SCAN_RECORDS)
+      .map(doc => ({ id: doc.id, data: doc.data() })),
+    20,
+    doc => serializeMatch(doc.id, doc.data),
+    { scanLimitReached: scanSnap.size > MAX_UNORDERED_SCAN_RECORDS },
+  );
 }
 
 /**
@@ -277,81 +311,6 @@ async function loadEducationMaterials(coachId) {
 // CONTEXT BUILDERS FOR AI
 // ============================================================
 
-function buildPlayerContext(profile, sessions, notes, coaching, matches, education) {
-  let text = "PLAYER CONTEXT:\n";
-
-  // Profile
-  text += `You are analyzing ${profile.name} (${profile.playerId}), `;
-  text += `a ${profile.age}-year-old ${profile.role}`;
-  if (profile.secondaryRole) text += ` / ${profile.secondaryRole}`;
-  text += `. Level: ${profile.level}.\n\n`;
-
-  // Recent assessments
-  if (sessions && sessions.length > 0) {
-    text += `RECENT TECHNICAL ASSESSMENTS (Last ${sessions.length} sessions):\n`;
-    sessions.forEach(s => {
-      text += `- ${s.date}: ${s.sessionType} (${s.role})\n`;
-      if (s.objective) text += `  Objective: ${s.objective}\n`;
-      if (s.outcome) text += `  Outcome: ${s.outcome}\n`;
-      if (s.nextAction) text += `  Next Action: ${s.nextAction}\n`;
-      if (s.summary) text += `  Summary: ${s.summary}\n`;
-    });
-    text += "\n";
-  }
-
-  // Matches
-  if (matches && matches.length > 0) {
-    text += `RECENT MATCH PERFORMANCE (Last ${matches.length} matches):\n`;
-    matches.forEach(m => {
-      let line = `- ${m.date}: ${m.matchName} (${m.result})`;
-      if (m.runs || m.balls) line += ` - Bat: ${m.runs}(${m.balls})`;
-      if (m.fours || m.sixes) line += ` [4s:${m.fours} 6s:${m.sixes}]`;
-      if (m.battingAt) line += ` | Bat at: ${m.battingAt}`;
-      if (m.dismissalMode) line += ` | Dismissal: ${m.dismissalMode}`;
-      if (m.overs) line += ` | Bowl: ${m.overs}ov ${m.runsConceded}r ${m.wickets}w`;
-      if (m.dotBalls) line += ` | Dots: ${m.dotBalls}`;
-      if (m.catches || m.runOuts || m.missedCatches) line += ` | Field: C${m.catches} RO${m.runOuts} MC${m.missedCatches}`;
-      if (m.coachPlayerNotes) line += ` | Notes: ${m.coachPlayerNotes}`;
-      text += `${line}\n`;
-    });
-    text += "\n";
-  }
-
-  // Notes
-  if (notes && notes.length > 0) {
-    text += `RECENT COACHING NOTES:\n`;
-    notes.forEach(n => {
-      text += `- ${n.date}: ${n.note}${n.tags && n.tags.length ? ` [${n.tags.join(", ")}]` : ""}\n`;
-    });
-    text += "\n";
-  }
-
-  // Coaching focus
-  if (coaching && coaching.length > 0) {
-    text += `RECENT COACHING FOCUS:\n`;
-    coaching.forEach(c => {
-      text += `- ${c.date}: ${c.type} / ${c.category}: ${c.objective}\n`;
-      if (c.objectiveResult) text += `  Result: ${c.objectiveResult}\n`;
-      if (c.wentWell) text += `  Went well: ${c.wentWell}\n`;
-      if (c.improve) text += `  Improve: ${c.improve}\n`;
-      if (c.nextAction) text += `  Next action: ${c.nextAction}\n`;
-    });
-    text += "\n";
-  }
-
-  // Education
-  if (education && education.length > 0) {
-    text += `RELEVANT COACHING RESOURCES:\n`;
-    education.forEach(e => {
-      text += `- "${e.title}" (${e.category}) by ${e.author}\n`;
-    });
-    text += "\n";
-  }
-
-  text += `Use this context to provide specific, personalized recommendations for ${profile.name}.`;
-  return text;
-}
-
 function buildCoachContext(players, sessions, matches, coaching, education) {
   let text = "COACH TEAM CONTEXT:\n";
 
@@ -403,6 +362,9 @@ exports.coachLensAI = onCall(
     if (!prompt || typeof prompt !== "string") {
       throw new HttpsError("invalid-argument", "A valid prompt is required.");
     }
+    if (prompt.length > 4000) {
+      throw new HttpsError("invalid-argument", "Prompt must be 4,000 characters or fewer.");
+    }
 
     // Validate playerId if provided
     if (playerId && typeof playerId !== "string") {
@@ -411,6 +373,7 @@ exports.coachLensAI = onCall(
 
     try {
       const apiKey = CEREBRAS_API_KEY.value();
+      let contextWarnings = [];
       const messages = [
         {
           role: "system",
@@ -425,39 +388,82 @@ exports.coachLensAI = onCall(
 
       // 2. DATA RETRIEVAL - either player-specific or coach-level
       if (playerId) {
-        // Player-specific mode with parallel queries
         try {
           logger.info(`Retrieving player context for ${playerId}`);
 
-          // QUICK: Get player profile (for name display)
-          const playerSnap = await db.collection("players").doc(playerId).get();
-          if (!playerSnap.exists) {
-            throw new HttpsError("not-found", "Player not found.");
-          }
-
-          // SECURITY: Verify ownership
-          const playerData = playerSnap.data();
-          if (playerData.coachId !== coachId) {
-            throw new HttpsError("permission-denied", "You do not have access to this player.");
-          }
-
+          const playerSnap = await resolvePlayerDocument(playerId, coachId);
           const profile = safePlayerProfile(playerSnap, coachId);
-
-          // PARALLEL: Load all other data concurrently
-          const [sessions, notes, coaching, matches, education] = await Promise.all([
-            loadPlayerSessions(playerId),
-            loadPlayerDayNotes(playerId),
-            loadCoachCoachingSessions(playerId, coachId),
-            loadMatchRecords(playerId, coachId),
+          const resolvedPlayerId = playerSnap.id;
+          const [assessments, notes, coaching, matches, education] = await Promise.all([
+            loadPlayerSessions(resolvedPlayerId),
+            loadPlayerDayNotes(resolvedPlayerId),
+            loadPlayerCoachingSessions(resolvedPlayerId, coachId),
+            loadMatchRecords(resolvedPlayerId, coachId),
             loadEducationMaterials(coachId)
           ]);
 
-          const contextText = buildPlayerContext(profile, sessions, notes, coaching, matches, education);
-          messages.push({ role: "system", content: contextText });
+          const assessmentsComplete = !assessments.hasMore && !assessments.scanLimitReached;
+          const notesComplete = !notes.hasMore && !notes.scanLimitReached;
+          const coachingComplete = !coaching.hasMoreLinked
+            && !coaching.directLimitReached
+            && !coaching.scanLimitReached;
+          const matchesComplete = !matches.hasMore && !matches.scanLimitReached;
+          const warnings = [];
+          if (!assessmentsComplete) {
+            warnings.push(
+              "Technical assessment coverage is partial: recent dated records and a bounded scan for records without dates were checked.",
+            );
+          }
+          if (!notesComplete) {
+            warnings.push(
+              "Day-note coverage is partial: recent dated records and a bounded scan for records without dates were checked.",
+            );
+          }
+          if (coaching.hasMoreLinked || coaching.directLimitReached) {
+            warnings.push(
+              `Only the ${MAX_CONTEXT_RECORDS} most recent linked coaching sessions were included.`,
+            );
+          }
+          if (coaching.scanLimitReached) {
+            warnings.push(
+              "Coaching-session coverage is partial: the 100-record team-session scan limit was reached. No linked sessions were found in the records checked does not mean that no linked sessions exist.",
+            );
+          }
+          if (!coachingComplete && !coaching.scanLimitReached) {
+            warnings.push(
+              "Coaching-session coverage is partial because one or more bounded session queries returned more records than could be included.",
+            );
+          }
+          if (!matchesComplete) {
+            warnings.push(
+              "Match-record coverage is partial: recent dated records and a bounded scan for records without dates were checked.",
+            );
+          }
 
+          const playerContext = buildPlayerContext(
+            profile,
+            assessments.records,
+            notes.records,
+            coaching.records,
+            matches.records,
+            education,
+            warnings,
+            {
+              technicalAssessmentsComplete: assessmentsComplete,
+              playerDayNotesComplete: notesComplete,
+              coachingSessionsComplete: coachingComplete,
+              matchRecordsComplete: matchesComplete,
+            },
+          );
+          contextWarnings = playerContext.warnings;
+          messages.push({ role: "system", content: playerContext.text });
         } catch (contextError) {
           if (contextError instanceof HttpsError) throw contextError;
-          logger.warn("Failed to get player context, falling back to generic:", contextError.message);
+          logger.error("Failed to retrieve selected-player context", contextError);
+          throw new HttpsError(
+            "unavailable",
+            "Unable to load the complete player context. Please retry; no personalized response was generated.",
+          );
         }
       } else {
         // Coach-level mode (team overview)
@@ -502,6 +508,12 @@ exports.coachLensAI = onCall(
         temperature: 0.4,
         max_tokens: 2000,
       });
+      if (Buffer.byteLength(requestBody, "utf8") > MAX_CONTEXT_BYTES * 3) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "The AI request exceeded its configured size limit. Please shorten the question.",
+        );
+      }
 
       const data = await new Promise((resolve, reject) => {
         const options = {
@@ -541,7 +553,8 @@ exports.coachLensAI = onCall(
 
       return {
         success: true,
-        answer: answer,
+        answer: formatPartialContextWarning(answer, contextWarnings),
+        contextWarnings,
       };
     } catch (error) {
       logger.error("CoachLens AI error", error);
