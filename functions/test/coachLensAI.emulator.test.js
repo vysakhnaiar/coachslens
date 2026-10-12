@@ -171,10 +171,14 @@ test("callable builds real player context and deduplicates overlapping dated and
   const responseGuidance = requestBodies[0].messages[0].content;
 
   assert.equal(result.answer, "Controlled emulator response.");
-  assert.match(responseGuidance, /Observations and Suggestions/);
-  assert.match(responseGuidance, /recorded strengths, weaknesses, and changes/);
+  assert.match(responseGuidance, /exactly two top-level sections, in this order: Observations and Suggestions/);
+  assert.match(responseGuidance, /Do not add any other top-level sections/);
+  assert.match(responseGuidance, /daily technical notes and formal technical assessments/);
+  assert.match(responseGuidance, /Strengths, weaknesses, and changes may be discussed within Observations/);
+  assert.match(responseGuidance, /clearly labelled as recommendations rather than recorded facts/);
   assert.match(responseGuidance, /Never invent player scores, assessment findings, dates, or progress/);
-  assert.match(responseGuidance, /measurable indicators for the next assessment/);
+  assert.match(responseGuidance, /claim improvement without supporting evidence/);
+  assert.match(responseGuidance, /Keep general, non-player questions concise and naturally formatted/);
   assert.match(
     requestBodies[0].messages.find(message =>
       message.content.startsWith("SELECTED PLAYER CONTEXT."),
