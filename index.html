@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="Content-Security-Policy" content="base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' blob: https://*.firebasestorage.app https://firebasestorage.googleapis.com https://www.google.com/recaptcha/ https://recaptcha.google.com/; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com; connect-src 'self' https://asia-south1-coach-s-lens.cloudfunctions.net https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.gstatic.com https://www.google.com/recaptcha/ https://recaptchaenterprise.googleapis.com;">
-    <title>Coach's Lens - Pro Analytics</title>
+    <title>CoachLens 2.0 - Cricket Performance Intelligence</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
@@ -76,7 +76,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
         const SECTIONS = [
             {
                 key: 'bat_grip', title: "Batting: Grip & Stance",
-                color: 'border-blue-600', tag: '!bg-blue-600',
                 show: (role) => ROLE_BATTING.includes(role),
                 fields: [
                     { id: 'b_h', label: 'Handle Position', options: ['Ideal (Middle-MH)', 'Top(TH)', 'Bottom(BH)'] },
@@ -92,7 +91,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'bat_tech', title: "Batting: Backlift & Trigger",
-                color: 'border-blue-400', tag: '!bg-blue-400',
                 show: (role) => ROLE_BATTING.includes(role),
                 fields: [
                     { id: 'b_bp', label: 'Backlift Path', options: ['Straight(ST)', 'Gully(GU)', 'Fine Leg(FL)'] },
@@ -108,7 +106,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'shots_footwork', title: "Batting: Shots & Footwork",
-                color: 'border-blue-500', tag: '!bg-blue-500',
                 show: (role) => ROLE_BATTING.includes(role),
                 fields: [
                     { id: 'sf_swing', label: 'Negotiating Swing', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
@@ -119,7 +116,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'shots_footwork_spin', title: "Batting: Shots & Footwork vs Spin",
-                color: 'border-indigo-500', tag: '!bg-indigo-500',
                 show: (role) => ROLE_BATTING.includes(role),
                 fields: [
                     { id: 'sfs_spin', label: 'Negotiating Spin', options: ['Excellent', 'V-Good', 'Good', 'Average', 'Below Par'] },
@@ -130,7 +126,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'bowling', title: "Bowling Technicals",
-                color: 'border-red-600', tag: '!bg-red-600',
                 show: (role) => ROLE_BOWLING.includes(role),
                 fields: [
                     { id: 'bo_ru', label: 'Run Up', options: ['Ideal (Straight)', 'Curved'] },
@@ -149,7 +144,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'wk', title: "Wicket Keeping",
-                color: 'border-orange-600', tag: '!bg-orange-600',
                 show: (role) => ROLE_WK.includes(role),
                 fields: [
                     { id: 'wk_st', label: 'Stance', options: ['Ideal', 'Narrow', 'Wide'] },
@@ -168,7 +162,6 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             },
             {
                 key: 'fielding', title: "Fielding & Throwing",
-                color: 'border-purple-600', tag: '!bg-purple-600',
                 show: () => true,
                 fields: [
                     { id: 'fi_nt', label: 'Non-Throw Hand', options: ['Ideal (Steady)', 'Drop'] },
@@ -320,7 +313,7 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             }
             list.innerHTML = filtered.map(m => `
                 <article class="education-card">
-                    <div class="education-card-top"><span class="pro-tag !bg-emerald-600">${escapeHtml(m.category || 'Education')}</span><span class="education-lock">🔒 PRIVATE</span></div>
+                    <div class="education-card-top"><span class="pro-tag">${escapeHtml(m.category || 'Education')}</span><span class="education-lock">🔒 PRIVATE</span></div>
                     <h3>${escapeHtml(m.title || 'Study Material')}</h3>
                     <p>${escapeHtml(m.description || 'Private coaching study material.')}</p>
                     <div class="flex flex-wrap gap-1 mt-2">${(Array.isArray(m.tags) ? m.tags : []).slice(0,8).map(t => `<span class="edu-tag">${escapeHtml(t)}</span>`).join('')}</div>
@@ -546,6 +539,7 @@ async function testCoachLensAI() {
     const prompt = promptEl?.value?.trim();
 
     if (!prompt) {
+        responseEl.dataset.state = 'error';
         responseEl.innerHTML =
             '<span class="text-red-500">Please enter a question first.</span>';
         return;
@@ -553,7 +547,10 @@ async function testCoachLensAI() {
 
     button.disabled = true;
     button.textContent = '🤖 Thinking...';
+    responseEl.dataset.state = 'loading';
+    responseEl.setAttribute('aria-busy', 'true');
     statusEl.textContent = 'Connecting to CoachLens AI...';
+    statusEl.dataset.state = 'loading';
     responseEl.textContent = '';
 
     try {
@@ -582,6 +579,7 @@ async function testCoachLensAI() {
         }
 
         responseEl.textContent = result.data.answer || 'No response received.';
+        responseEl.dataset.state = 'success';
 
         if (selectedCoachLensPlayer) {
             const selectedPlayer = allPlayers.find(
@@ -594,6 +592,7 @@ async function testCoachLensAI() {
             statusEl.textContent =
                 '✓ Response generated by CoachLens AI';
         }
+        statusEl.dataset.state = 'success';
 
     } catch (error) {
         console.error('CoachLens AI error:', error);
@@ -605,10 +604,13 @@ async function testCoachLensAI() {
                 Error: ${escapeHtml(error.message || String(error))}
             </div>
         `;
+        responseEl.dataset.state = 'error';
 
         statusEl.textContent = 'AI connection failed';
+        statusEl.dataset.state = 'error';
 
     } finally {
+        responseEl.setAttribute('aria-busy', 'false');
         button.disabled = false;
         button.textContent = '🤖 Ask CoachLens AI';
     }
@@ -616,9 +618,13 @@ async function testCoachLensAI() {
 
 window.clearCoachLensAI = () => {
     document.getElementById('aiPrompt').value = '';
-    document.getElementById('aiResponse').innerHTML =
-        '<span class="text-slate-400">Your AI response will appear here.</span>';
-    document.getElementById('aiStatus').textContent = '';
+    const response = document.getElementById('aiResponse');
+    response.dataset.state = 'empty';
+    response.setAttribute('aria-busy', 'false');
+    response.innerHTML = '<span>Your AI response will appear here.</span>';
+    const status = document.getElementById('aiStatus');
+    status.textContent = '';
+    delete status.dataset.state;
 };       
 function escapeHtml(str) {
             return String(str == null ? '' : str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -852,6 +858,13 @@ try {
                 currentUserProfile = gate.profile;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('app-interface').classList.remove('hidden');
+                const coachName = currentUserProfile.name || user.displayName || user.email?.split('@')[0] || 'Coach';
+                const coachNameEl = document.getElementById('coachProfileName');
+                const coachRoleEl = document.getElementById('coachProfileRole');
+                const coachAvatarEl = document.getElementById('coachProfileAvatar');
+                if (coachNameEl) coachNameEl.textContent = coachName;
+                if (coachRoleEl) coachRoleEl.textContent = String(currentUserProfile.role || ROLE_VIEWER).replace(/^\w/, c => c.toUpperCase());
+                if (coachAvatarEl) coachAvatarEl.textContent = coachName.trim().charAt(0).toUpperCase() || 'C';
                 const coachEmailLabel = document.getElementById('coachEmailLabel');
                 if (coachEmailLabel) coachEmailLabel.innerText = `${user.email || ''}${currentUserProfile?.role ? ' · ' + String(currentUserProfile.role).toUpperCase() : ''}`;
                 showHome();
@@ -876,9 +889,9 @@ try {
                 const snap = await getDocs(collection(db, 'users'));
                 const users = snap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.role !== ROLE_ADMIN);
                 const pending = users.filter(u => u.status === 'pending');
-                panel.innerHTML = `<div class="flex items-center justify-between gap-3 mb-4"><div><span class="pro-tag !bg-slate-900">ADMIN</span><h3 class="text-lg font-black text-slate-900 mt-2">Coach Registrations</h3><p class="text-xs text-slate-500 mt-1">Approve verified coaches before they can access Coach’s Lens.</p></div><button onclick="loadCoachApprovals()" class="secondary-btn">Refresh</button></div>` +
-                    (pending.length ? `<div class="space-y-3">${pending.map(u => `<div class="border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-3"><div class="flex-1"><b class="text-sm">${escapeHtml(u.name || 'Unnamed coach')}</b><p class="text-xs text-slate-500">${escapeHtml(u.email || '')}</p><span class="status-pill partial">Pending${u.emailVerified ? ' · Email verified' : ' · Email not verified'}</span></div><select id="role_${u.id}" class="w-full md:w-40"><option value="viewer">Viewer</option><option value="contributor">Contributor</option></select><button onclick="approveCoach('${u.id}')" class="primary-btn">Approve</button><button onclick="rejectCoach('${u.id}')" class="secondary-btn">Reject</button></div>`).join('')}</div>` : `<div class="empty-note">No pending coach registrations.</div>`) +
-                    `<div class="mt-6 pt-5 border-t"><h4 class="font-black text-sm mb-3">Current Coaches</h4><div class="space-y-2">${users.filter(u=>u.status==='approved' && u.active===true).map(u=>`<div class="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl"><div><b class="text-xs">${escapeHtml(u.name||'Coach')}</b><p class="text-[10px] text-slate-500">${escapeHtml(u.email||'')} · ${escapeHtml(u.role||'viewer')}</p></div><button onclick="revokeCoach('${u.id}')" class="text-[10px] font-black text-red-600 uppercase">Revoke Access</button></div>`).join('') || '<div class="empty-note">No approved coaches yet.</div>'}</div></div>`;
+                panel.innerHTML = `<div class="flex items-center justify-between gap-3 mb-4"><div><span class="pro-tag">ADMIN</span><h3 class="text-lg font-black text-slate-900 mt-2">Coach Registrations</h3><p class="text-xs text-slate-500 mt-1">Approve verified coaches before they can access Coach’s Lens.</p></div><button onclick="loadCoachApprovals()" class="secondary-btn">Refresh</button></div>` +
+                    (pending.length ? `<div class="space-y-3">${pending.map(u => `<div class="education-approval-row"><div class="flex-1"><b class="text-sm">${escapeHtml(u.name || 'Unnamed coach')}</b><p class="text-xs text-slate-500">${escapeHtml(u.email || '')}</p><span class="status-pill partial">Pending${u.emailVerified ? ' · Email verified' : ' · Email not verified'}</span></div><label class="sr-only" for="role_${u.id}">Access role for ${escapeHtml(u.name || 'coach')}</label><select id="role_${u.id}" class="w-full md:w-40"><option value="viewer">Viewer</option><option value="contributor">Contributor</option></select><button onclick="approveCoach('${u.id}')" class="primary-btn">Approve</button><button onclick="rejectCoach('${u.id}')" class="secondary-btn">Reject</button></div>`).join('')}</div>` : `<div class="empty-note">No pending coach registrations.</div>`) +
+                    `<div class="current-coaches"><h4 class="font-black text-sm mb-3">Current Coaches</h4><div class="current-coaches-list">${users.filter(u=>u.status==='approved' && u.active===true).map(u=>`<div class="coach-access-row"><div class="coach-access-details"><b>${escapeHtml(u.name||'Coach')}</b><span class="coach-role-badge" data-role="${u.role===ROLE_CONTRIBUTOR?'contributor':'viewer'}">${escapeHtml(u.role||'viewer')}</span><p>${escapeHtml(u.email||'')}</p></div><button onclick="revokeCoach('${u.id}')" class="danger-btn coach-revoke-btn">Revoke Access</button></div>`).join('') || '<div class="empty-note">No approved coaches yet.</div>'}</div></div>`;
             } catch (err) {
                 console.error(err);
                 panel.innerHTML = '<div class="empty-note">Unable to load coach registrations.</div>';
@@ -917,12 +930,12 @@ try {
                 const approvedUsersSnap = await getDocs(collection(db, 'users'));
                 const approvedUsers = approvedUsersSnap.docs.map(d => ({ id:d.id, ...d.data() }))
                     .filter(u => u.role !== ROLE_ADMIN && u.status === 'approved' && u.active === true);
-                const requestHtml = `<div class="mt-6 pt-5 border-t border-slate-300"><div class="flex items-center justify-between gap-3 mb-4"><div><span class="pro-tag !bg-amber-600">STUDY MATERIALS</span><h3 class="text-lg font-black text-slate-900 mt-2">Pending Material Requests</h3><p class="text-xs text-slate-500 mt-1">Review contributor uploads before they enter the Coach Education library.</p></div><button onclick="loadEducationPendingRequests()" class="secondary-btn">Refresh</button></div>` +
-                    (pending.length ? `<div class="space-y-3">${pending.map(r => `<div class="border rounded-xl p-4 bg-white"><div class="flex flex-col lg:flex-row lg:items-start gap-4"><div class="flex-1"><div class="flex flex-wrap gap-2 items-center"><span class="status-pill partial">PENDING</span><b class="text-sm">${escapeHtml(r.title || 'Untitled material')}</b></div><p class="text-xs text-slate-500 mt-1">${escapeHtml(r.category || 'Education')} · ${escapeHtml(r.level || 'All Levels')} · ${escapeHtml(r.createdByEmail || 'Contributor')}</p><p class="text-xs text-slate-600 mt-2">${escapeHtml(r.description || 'No description provided.')}</p></div><div class="flex flex-wrap gap-2"><button onclick="approveEducationRequest('${r.id}')" class="primary-btn">Approve</button><button onclick="rejectEducationRequest('${r.id}')" class="secondary-btn">Reject</button></div></div></div>`).join('')}</div>` : `<div class="empty-note">No pending study material requests.</div>`) + `</div>`;
+                const requestHtml = `<div class="education-admin-subsection"><div class="flex items-center justify-between gap-3 mb-4"><div><span class="pro-tag">STUDY MATERIALS</span><h3 class="text-lg font-black text-slate-900 mt-2">Pending Material Requests</h3><p class="text-xs text-slate-500 mt-1">Review contributor uploads before they enter the Coach Education library.</p></div><button onclick="loadEducationPendingRequests()" class="secondary-btn">Refresh</button></div>` +
+                    (pending.length ? `<div class="space-y-3">${pending.map(r => `<div class="education-request-row"><div class="flex flex-col lg:flex-row lg:items-start gap-4"><div class="flex-1"><div class="flex flex-wrap gap-2 items-center"><span class="status-pill partial">PENDING</span><b class="text-sm">${escapeHtml(r.title || 'Untitled material')}</b></div><p class="text-xs text-slate-500 mt-1">${escapeHtml(r.category || 'Education')} · ${escapeHtml(r.level || 'All Levels')} · ${escapeHtml(r.createdByEmail || 'Contributor')}</p><p class="text-xs text-slate-600 mt-2">${escapeHtml(r.description || 'No description provided.')}</p></div><div class="flex flex-wrap gap-2"><button onclick="approveEducationRequest('${r.id}')" class="primary-btn">Approve</button><button onclick="rejectEducationRequest('${r.id}')" class="secondary-btn">Reject</button></div></div></div>`).join('')}</div>` : `<div class="empty-note">No pending study material requests.</div>`) + `</div>`;
                 panel.insertAdjacentHTML('beforeend', requestHtml);
             } catch (err) {
                 console.error('Unable to load study material requests:', err);
-                panel.insertAdjacentHTML('beforeend', '<div class="mt-6 pt-5 border-t border-slate-300"><div class="empty-note text-red-600">Unable to load pending study material requests.</div></div>');
+                panel.insertAdjacentHTML('beforeend', '<div class="education-admin-subsection"><div class="empty-note text-red-600">Unable to load pending study material requests.</div></div>');
             }
         };
 
@@ -1138,15 +1151,15 @@ if (coachLensPlayerSelect) {
             }
 
             const roleBadges = {
-                'Batter': 'bg-blue-900/40 text-blue-400 border-blue-700/50',
-                'Bowler': 'bg-rose-900/40 text-rose-400 border-rose-700/50',
-                'All rounder': 'bg-emerald-900/40 text-emerald-400 border-emerald-700/50',
-                'WK batter': 'bg-amber-900/40 text-amber-400 border-amber-700/50'
+                'Batter': 'role-batter',
+                'Bowler': 'role-bowler',
+                'All rounder': 'role-all-rounder',
+                'WK batter': 'role-wicketkeeper'
             };
 
             listEl.innerHTML = list.map(p => {
                 const initials = (p.name || 'P').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-                const badgeClass = roleBadges[p.role] || 'bg-slate-800 text-slate-300 border-slate-700';
+                const badgeClass = roleBadges[p.role] || 'role-default';
                 const pCode = getPlayerIdCode(p);
                 return `
                 <div class="player-card group" onclick="openPlayer('${p.id}')">
@@ -1157,11 +1170,11 @@ if (coachLensPlayerSelect) {
                         <div class="min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <p class="font-black text-sm text-white group-hover:text-emerald-400 transition-colors truncate">${escapeHtml(p.name || 'Unnamed')}</p>
-                                <span class="font-mono text-[9px] text-[#F97316] font-bold bg-orange-950/40 px-1.5 py-0.5 rounded border border-orange-800/50">${escapeHtml(pCode)}</span>
-                                <span class="text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider ${badgeClass}">${escapeHtml(p.role || 'Player')}</span>
-                                ${p.level ? `<span class="text-[8px] font-bold text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/50">${escapeHtml(p.level)}</span>` : ''}
+                                <span class="player-id-badge">${escapeHtml(pCode)}</span>
+                                <span class="player-role-badge ${badgeClass}">${escapeHtml(p.role || 'Player')}</span>
+                                ${p.level ? `<span class="player-level-badge">${escapeHtml(p.level)}</span>` : ''}
                             </div>
-                            <p class="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                            <p class="player-meta text-slate-400 font-medium truncate mt-0.5">
                                 ${p.hand || 'RH'} Bat ${p.bowlingArm || p.bowlingType ? `· ${escapeHtml(p.bowlingArm || '')} ${escapeHtml(p.bowlingType || '')}` : ''} ${p.age ? `· ${escapeHtml(p.age)} yrs` : ''}
                             </p>
                         </div>
@@ -1470,7 +1483,7 @@ if (coachLensPlayerSelect) {
                     <div class="flex gap-1 flex-wrap justify-end">
                         <button onclick="openSession('${s.id}')" class="btn-mini bg-slate-100 text-slate-700">Edit</button>
                         <button onclick="quickDownload('${s.id}')" class="btn-mini bg-emerald-100 text-emerald-700">PDF</button>
-                        <button onclick="confirmDeleteSession('${s.id}')" class="btn-mini bg-red-100 text-red-700">Del</button>
+                        <button onclick="confirmDeleteSession('${s.id}')" class="btn-mini danger-btn">Delete</button>
                     </div>
                 </div>`;
             }).join('');
@@ -1516,7 +1529,8 @@ if (coachLensPlayerSelect) {
         };
 
         function fieldSelectHTML(field, currentValue, currentScore) {
-            const opts = field.options.map(o => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('');
+            const hasValue = currentValue != null && String(currentValue).trim() !== '';
+            const opts = `${hasValue ? '' : '<option value="" selected disabled>Select rating</option>'}${field.options.map(o => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('')}`;
             const scoreVal = currentScore ? String(currentScore) : '';
             return `<div class="metric-score-field flex flex-col justify-between">
                 <div>
@@ -1542,8 +1556,8 @@ if (coachLensPlayerSelect) {
         function renderSessionForm(role, data) {
             const visible = SECTIONS.filter(sec => sec.show(role));
             document.getElementById('dynamicSections').innerHTML = visible.map(sec => `
-                <div class="form-card border-t-4 ${sec.color}">
-                    <span class="pro-tag ${sec.tag}">${sec.title}</span>
+                <div class="form-card assessment-section">
+                    <span class="pro-tag">${sec.title}</span>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         ${sec.fields.map(f => fieldSelectHTML(f, data[f.id], data[f.id + '_score'])).join('')}
                     </div>
@@ -1733,11 +1747,18 @@ if (coachLensPlayerSelect) {
         // ============================================================
         function sectionTableHTML(sec, data) {
             const rows = sec.fields.map(f => {
-                const val = data[f.id] || 'Ideal';
-                const color = val.includes('Ideal') ? '#10b981' : '#ef4444';
+                const rawValue = data[f.id];
+                const val = rawValue == null || String(rawValue).trim() === ''
+                    ? '<span style="color:#64748b;font-style:italic;">Not recorded</span>'
+                    : escapeHtml(String(rawValue));
+                const rawScore = data[f.id + '_score'];
+                const hasScore = rawScore != null && String(rawScore).trim() !== '' && Number.isFinite(Number(rawScore));
+                const score = hasScore
+                    ? `<span style="color:#334155;">Score: ${escapeHtml(String(rawScore))}/5</span>`
+                    : '';
                 return `<tr style="border-bottom: 1px solid #f1f5f9;">
                             <td style="padding: 6px 8px; color: #64748b; font-weight: bold; width: 45%; text-transform: uppercase; font-size: 9px;">${escapeHtml(f.label)}</td>
-                            <td style="padding: 6px 8px; color: ${color}; font-weight: bold;">${escapeHtml(val)}</td>
+                            <td style="padding: 6px 8px; color: #334155; font-weight: bold;">${val} ${score}</td>
                         </tr>`;
             }).join('');
             return `<div class="pdf-block" style="page-break-inside: avoid; break-inside: avoid;">
@@ -1747,7 +1768,7 @@ if (coachLensPlayerSelect) {
         }
 
         function buildReportHTML(player, session) {
-            const dateStr = formatDateDisplay(session.date) !== '—' ? formatDateDisplay(session.date) : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+            const dateStr = formatDateDisplay(session.date);
             const role = session.role || player.role;
 
             let html = `<div style="font-family: Arial, sans-serif; padding: 40px; color: #1e293b;">
@@ -1763,9 +1784,9 @@ if (coachLensPlayerSelect) {
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:25px; border:1px solid #e2e8f0; font-size:12px;">
                     <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Player</small><br><b>${escapeHtml(player.name || 'Unnamed')}</b></div>
-                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Age</small><br><b>${escapeHtml(player.age || 'N/A')}</b></div>
-                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Role</small><br><b>${escapeHtml(role)}</b></div>
-                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Hand</small><br><b>${escapeHtml(player.hand || '')}</b></div>
+                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Age</small><br><b>${escapeHtml(player.age || 'Not recorded')}</b></div>
+                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Role</small><br><b>${escapeHtml(role || 'Not recorded')}</b></div>
+                    <div><small style="color:#64748b; font-size:9px; font-weight:bold; text-transform:uppercase;">Hand</small><br><b>${escapeHtml(player.hand || 'Not recorded')}</b></div>
                 </div>`;
 
             SECTIONS.forEach(sec => {
@@ -1774,12 +1795,12 @@ if (coachLensPlayerSelect) {
 
             html += `<div class="pdf-block" style="page-break-inside: avoid; break-inside: avoid; margin-top: 16px; border-top: 3px solid #065f46; padding-top:12px;">
                     <h2 style="font-size: 14px; color: #065f46; margin-bottom: 8px; text-transform: uppercase;">Coach's Overall Summary</h2>
-                    <div style="background: #fffbeb; border: 1px solid #fef3c7; padding: 16px; border-radius: 8px; font-size: 12px; line-height: 1.6; color: #451a03;">
-                        ${(session.summary || 'No summary provided.').replace(/\n/g, '<br>')}
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; font-size: 12px; line-height: 1.6; color: #334155;">
+                        ${session.summary ? escapeHtml(session.summary).replace(/\n/g, '<br>') : '<span style="color:#64748b;font-style:italic;">Not recorded</span>'}
                     </div>
                 </div>
                 <div style="margin-top: 20px; text-align: center; font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">
-                    Verified Professional Performance Document | Coach's Lens Analytics
+                    CoachLens · Player Performance Record
                 </div>
             </div>`;
 
@@ -1818,21 +1839,23 @@ if (coachLensPlayerSelect) {
             const el = document.getElementById('playerSnapshot');
             if (!el) return;
             const sessions = sessionsCache.filter(s => s.role === player.role || !s.role);
-            const scores = calculateAssessmentScores(sessions[sessions.length - 1] || {});
+            const latest = sessions[0];
+            const scores = calculateAssessmentScores(latest || {});
+            const assessed = scores.count > 0;
             el.innerHTML = `
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Overall</span><b class="text-lg sm:text-xl font-black ${scores.overall>=80?'!text-emerald-400':scores.overall>=60?'!text-amber-400':'!text-red-400'}">${scores.overall}%</b></div>
-                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Technical Areas</span><b class="text-lg sm:text-xl font-black text-white">${scores.count}</b></div>
-                    <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Last Assessment</span><b class="text-sm sm:text-base font-black text-white">${sessions.length ? formatDateDisplay(sessions[0].date) : '—'}</b></div>
+                    <div class="score-card"><span>Overall</span><b class="text-lg sm:text-xl font-black ${assessed ? scores.overall>=80?'!text-emerald-400':scores.overall>=60?'!text-amber-400':'!text-red-400' : ''}">${assessed ? `${scores.overall}%` : 'Not assessed'}</b></div>
+                    <div class="score-card"><span>Scored Areas</span><b class="text-lg sm:text-xl font-black text-white">${scores.count}</b></div>
+                    <div class="score-card"><span>Last Assessment</span><b class="text-sm sm:text-base font-black text-white">${latest ? formatDateDisplay(latest.date) : '—'}</b></div>
                     <div class="score-card"><span class="text-[9px] uppercase font-black text-slate-400">Level</span><b class="text-sm sm:text-base font-black text-white">${escapeHtml(player.level || '—')}</b></div>
                 </div>
                 <div class="form-card mt-3">
                     <div class="flex justify-between items-center mb-3"><span class="pro-tag !bg-emerald-600">Current Technical Snapshot</span></div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${scores.items.slice(0,10).map(x=>`
+                    ${scores.items.length ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${scores.items.slice(0,10).map(x=>`
                         <div class="flex justify-between items-center border-b border-slate-800 py-2 text-xs">
                             <span class="font-bold text-slate-300">${escapeHtml(x.label)}</span>
                             <b class="${x.score <= 2 ? '!text-red-400' : x.score >= 4 ? '!text-emerald-400' : '!text-amber-400'}">${x.score}/5</b>
-                        </div>`).join('')}</div>
+                        </div>`).join('')}</div>` : '<p class="empty-note">No scored technical assessment values are available yet.</p>'}
                 </div>`;
         }
 
@@ -1846,21 +1869,22 @@ if (coachLensPlayerSelect) {
                 el.innerHTML=`
                     <div class="form-card">
                         <div class="flex justify-between items-center mb-3">
-                            <span class="pro-tag !bg-purple-600">DAY NOTES</span>
+                            <span class="pro-tag">DAY NOTES</span>
                             <span class="text-[9px] uppercase font-bold text-slate-400">${notes.length} note${notes.length===1?'':'s'}</span>
                         </div>
                         ${notes.length?notes.slice(0,12).map(n=>`
                             <div class="day-note-profile">
                                 <div class="flex justify-between gap-3">
                                     <b>${formatDateDisplay(n.date)}</b>
-                                    <span class="text-[9px] uppercase font-bold text-purple-600">${escapeHtml(n.sessionCategory||n.sessionType||'Session')}</span>
+                                    <span class="day-note-category">${escapeHtml(n.sessionCategory||n.sessionType||'Session')}</span>
                                 </div>
                                 <p>${escapeHtml(n.note)}</p>
                                 ${n.tags?`<small>${escapeHtml(n.tags)}</small>`:''}
                             </div>`).join(''):'<p class="text-xs text-slate-400 italic">No day notes yet.</p>'}
                     </div>`;
             }catch(e){
-                el.innerHTML='';
+                console.error('Unable to load player day notes:', e);
+                el.innerHTML='<div class="empty-note error-state">Unable to load day notes. Please try again.</div>';
             }
         }
 
@@ -1879,11 +1903,10 @@ if (coachLensPlayerSelect) {
 
         function updateHomeStats(){
             const p=document.getElementById('homePlayerCount'), s=document.getElementById('homeSessionCount');
-            const m=document.getElementById('homeMatchCount'), r=document.getElementById('homeReportCount');
+            const m=document.getElementById('homeMatchCount');
             if(p) p.textContent=allPlayers.length;
             if(s) s.textContent=allPlayers.reduce((n,x)=>n+(x.sessionCount||0),0)+coachingSessionsCache.length;
             if(m) m.textContent=matchesCache.length;
-            if(r) r.textContent=allPlayers.length ? allPlayers.length : 0;
         }
 
         let pendingPlayerDayNotes = [];
@@ -1952,7 +1975,7 @@ if (coachLensPlayerSelect) {
             wrap.innerHTML=pendingPlayerDayNotes.map(n=>`
                 <div class="player-note-entry">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="text-[10px] font-black uppercase tracking-wider text-purple-700">Player Note</span>
+                        <span class="player-note-label">Player Note</span>
                         <button type="button" onclick="removePlayerDayNote(${n.id})" class="text-[10px] text-red-500 font-bold">Remove</button>
                     </div>
                     <div class="grid md:grid-cols-[220px_1fr] gap-3">
@@ -2031,14 +2054,14 @@ if (coachLensPlayerSelect) {
                     <div class="session-row">
                         <div>
                             <b class="text-xs">${formatDateDisplay(s.date)}</b>
-                            <p class="text-[9px] text-slate-400 uppercase">${escapeHtml(s.type||'')} · ${escapeHtml(s.category||'')}</p>
-                            <p class="text-[10px] text-slate-600 mt-1">${escapeHtml(s.objective||'')}</p>
+                            <p class="session-meta">${escapeHtml(s.type||'')} · ${escapeHtml(s.category||'')}</p>
+                            <p class="session-objective">${escapeHtml(s.objective||'')}</p>
                         </div>
                         <div class="text-right">
                             <span class="status-pill ${s.objectiveResult==='Yes'?'good':s.objectiveResult==='Partially'?'partial':'not'}">${escapeHtml(s.objectiveResult||'Not set')}</span>
-                            <p class="text-[9px] text-slate-400 mt-1">${(s.playerDayNotes||[]).length} player note(s)</p>
+                            <p class="session-note-count">${(s.playerDayNotes||[]).length} player note(s)</p>
                         </div>
-                    </div>`).join('') : '<p class="p-4 text-xs text-slate-400 italic">No coaching sessions recorded yet.</p>';
+                    </div>`).join('') : '<div class="coaching-empty-state"><span class="coaching-empty-icon">＋</span><div><b>No sessions recorded yet</b><p>Create a team or individual session to start building your coaching history.</p></div></div>';
             }catch(e){el.innerHTML='<p class="p-4 text-xs text-red-500">Unable to load coaching sessions.</p>';}
             updateHomeStats();
         }
@@ -2047,46 +2070,46 @@ if (coachLensPlayerSelect) {
             const wrap=document.getElementById('matchFormWrap');
             wrap.classList.remove('hidden');
             wrap.innerHTML=`
-                <span class="pro-tag !bg-orange-600">ADD MATCH PERFORMANCE</span>
+                <span class="pro-tag">ADD MATCH PERFORMANCE</span>
 
                 <div class="grid md:grid-cols-4 gap-4 mt-4">
-                    <div><label>Date</label><input type="date" id="m_date" value="${todayISO()}"></div>
-                    <div><label>Match / Opponent</label><input id="m_name" placeholder="e.g. KCA vs District XI"></div>
-                    <div><label>Player</label><select id="m_player">${allPlayers.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></div>
-                    <div><label>Result</label><input id="m_result" placeholder="Won / Lost / Draw"></div>
+                    <div><label for="m_date">Date</label><input type="date" id="m_date" value="${todayISO()}"></div>
+                    <div><label for="m_name">Match / Opponent</label><input id="m_name" placeholder="e.g. KCA vs District XI"></div>
+                    <div><label for="m_player">Player</label><select id="m_player">${allPlayers.length ? allPlayers.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('') : '<option value="">No players available</option>'}</select></div>
+                    <div><label for="m_result">Result</label><input id="m_result" placeholder="Won / Lost / Draw"></div>
                 </div>
 
                 <div class="grid md:grid-cols-3 gap-4 mt-5">
-                    <div class="sub-card">
-                        <b>Batting Performance</b>
-                        <input id="m_runs" type="number" min="0" placeholder="Runs" class="mt-2">
-                        <input id="m_balls" type="number" min="0" placeholder="Balls" class="mt-2">
-                        <input id="m_4s" type="number" min="0" placeholder="4s" class="mt-2">
-                        <input id="m_6s" type="number" min="0" placeholder="6s" class="mt-2">
+                    <div class="sub-card match-performance-panel">
+                        <h3>Batting Performance</h3>
+                        <label for="m_runs">Runs</label><input id="m_runs" type="number" min="0" placeholder="Runs" class="mt-1">
+                        <label for="m_balls">Balls faced</label><input id="m_balls" type="number" min="0" placeholder="Balls" class="mt-1">
+                        <label for="m_4s">Fours</label><input id="m_4s" type="number" min="0" placeholder="4s" class="mt-1">
+                        <label for="m_6s">Sixes</label><input id="m_6s" type="number" min="0" placeholder="6s" class="mt-1">
                     </div>
 
-                    <div class="sub-card">
-                        <b>Bowling Performance</b>
-                        <input id="m_overs" placeholder="Overs" class="mt-2">
-                        <input id="m_conceded" type="number" min="0" placeholder="Runs conceded" class="mt-2">
-                        <input id="m_wickets" type="number" min="0" placeholder="Wickets" class="mt-2">
-                        <input id="m_dotballs" type="number" min="0" placeholder="Dot balls" class="mt-2">
-                        <input id="m_wides" type="number" min="0" placeholder="Wides" class="mt-2">
-                        <input id="m_noballs" type="number" min="0" placeholder="No Balls" class="mt-2">
+                    <div class="sub-card match-performance-panel">
+                        <h3>Bowling Performance</h3>
+                        <label for="m_overs">Overs</label><input id="m_overs" placeholder="Overs" class="mt-1">
+                        <label for="m_conceded">Runs conceded</label><input id="m_conceded" type="number" min="0" placeholder="Runs conceded" class="mt-1">
+                        <label for="m_wickets">Wickets</label><input id="m_wickets" type="number" min="0" placeholder="Wickets" class="mt-1">
+                        <label for="m_dotballs">Dot balls</label><input id="m_dotballs" type="number" min="0" placeholder="Dot balls" class="mt-1">
+                        <label for="m_wides">Wides</label><input id="m_wides" type="number" min="0" placeholder="Wides" class="mt-1">
+                        <label for="m_noballs">No-balls</label><input id="m_noballs" type="number" min="0" placeholder="No Balls" class="mt-1">
                     </div>
 
-                    <div class="sub-card">
-                        <b>Fielding Performance</b>
-                        <input id="m_catches" type="number" min="0" placeholder="Catches" class="mt-2">
-                        <input id="m_missed" type="number" min="0" placeholder="Missed catches" class="mt-2">
-                        <input id="m_runouts" type="number" min="0" placeholder="Run-outs" class="mt-2">
-                        <input id="m_direct" type="number" min="0" placeholder="Direct hits" class="mt-2">
-                        <input id="m_misfields" type="number" min="0" placeholder="Misfields" class="mt-2">
+                    <div class="sub-card match-performance-panel">
+                        <h3>Fielding Performance</h3>
+                        <label for="m_catches">Catches</label><input id="m_catches" type="number" min="0" placeholder="Catches" class="mt-1">
+                        <label for="m_missed">Missed catches</label><input id="m_missed" type="number" min="0" placeholder="Missed catches" class="mt-1">
+                        <label for="m_runouts">Run-outs</label><input id="m_runouts" type="number" min="0" placeholder="Run-outs" class="mt-1">
+                        <label for="m_direct">Direct hits</label><input id="m_direct" type="number" min="0" placeholder="Direct hits" class="mt-1">
+                        <label for="m_misfields">Misfields</label><input id="m_misfields" type="number" min="0" placeholder="Misfields" class="mt-1">
                     </div>
                 </div>
 
                 <div class="mt-6 border-t border-slate-200 pt-5">
-                    <span class="pro-tag !bg-blue-600">BATTING MATCH DETAILS</span>
+                    <span class="pro-tag">BATTING MATCH DETAILS</span>
                     <div class="grid md:grid-cols-3 gap-4 mt-4">
                         <div>
                             <label>Batting At</label>
@@ -2161,7 +2184,7 @@ if (coachLensPlayerSelect) {
                 </div>
 
                 <div class="mt-6 border-t border-slate-200 pt-5">
-                    <span class="pro-tag !bg-emerald-600">COACH / PLAYER NOTES</span>
+                    <span class="pro-tag">COACH / PLAYER NOTES</span>
                     <label for="m_notes">Coach / Player Notes</label>
                     <textarea id="m_notes" rows="5" placeholder="What went well? What can be improved? Key moments? Player comments? Next action?"></textarea>
                 </div>
@@ -2287,7 +2310,7 @@ if (coachLensPlayerSelect) {
                         <div class="text-right text-[10px] font-bold">
                             Bat ${m.runs||0}/${m.balls||0} · SR ${sr} · Wkts ${m.wickets||0}
                             <p class="text-[9px] text-slate-500 mt-1">Wides ${m.wides||0} · No Balls ${m.noBalls||0}</p>
-                            <button onclick="confirmDeleteMatch('${m.id}')" class="btn-mini bg-red-100 text-red-700 mt-2">Delete</button>
+                            <button onclick="confirmDeleteMatch('${m.id}')" class="btn-mini danger-btn mt-2">Delete</button>
                         </div>
                     </div>`;
                 }).join(''):'<p class="p-4 text-xs text-slate-400 italic">No match data recorded yet.</p>';
@@ -2340,12 +2363,47 @@ if (coachLensPlayerSelect) {
             const p=allPlayers.find(x=>x.id===pid), preview=document.getElementById('reportPreview');
             if(!p){ preview.innerHTML='<p class="text-sm text-slate-500">Select a player first.</p>'; return; }
             try{
-                const snap=await getDocs(collection(db,'players',pid,'sessions')); const ss=[]; snap.forEach(d=>ss.push({id:d.id,...d.data()}));
+                const snap=await getDocs(collection(db,'players',pid,'sessions'));
+                const ss=[];
+                snap.forEach(d=>ss.push({id:d.id,...d.data()}));
                 ss.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-                const latest=ss[0]||{}; const sc=calculateAssessmentScores(latest);
-                preview.innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(p.name)}</h2><p>${escapeHtml(p.role||'')} · ${escapeHtml(p.level||'')}</p><div class="report-score">${sc.overall}%</div><h3>Technical Snapshot</h3>${sc.items.map(x=>`<div class="report-line"><span>${escapeHtml(x.label)}</span><b>${x.score}/5</b></div>`).join('')}<h3>Coach Summary</h3><p>${escapeHtml(latest.summary||'No assessment summary.')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
+                const profileValue = value => value == null || String(value).trim() === ''
+                    ? '<span class="report-missing">Not recorded</span>'
+                    : escapeHtml(String(value));
+                const assessmentHistory = ss.length ? ss.map((session, index) => {
+                    const scores = calculateAssessmentScores(session);
+                    const role = session.role || p.role;
+                    const sections = SECTIONS.filter(section => section.show(role));
+                    return `<section class="report-history-entry">
+                        <div class="report-history-heading">
+                            <div><h4>Assessment ${ss.length - index}</h4><p>${profileValue(formatDateDisplay(session.date))} · ${profileValue(session.sessionType)}</p></div>
+                            <strong>${scores.count ? `${scores.overall}%` : '<span class="report-missing">Not assessed</span>'}</strong>
+                        </div>
+                        ${sections.map(section => sectionTableHTML(section, session)).join('')}
+                        <h4 class="report-subheading">Coach Summary</h4>
+                        <p>${session.summary ? escapeHtml(session.summary) : '<span class="report-missing">Not recorded</span>'}</p>
+                    </section>`;
+                }).join('') : '<div class="empty-note">No assessment history is available for this player yet.</div>';
+                preview.innerHTML=`<div class="form-card report-sheet">
+                    <h1>COACH'S LENS</h1>
+                    <h2>${escapeHtml(p.name || 'Unnamed player')}</h2>
+                    <p class="report-subtitle">Player profile and recorded assessment history</p>
+                    <div class="report-grid">
+                        <div><span>PLAYER ID</span><b>${profileValue(getPlayerIdCode(p))}</b></div>
+                        <div><span>ROLE</span><b>${profileValue(p.role)}</b></div>
+                        <div><span>LEVEL</span><b>${profileValue(p.level)}</b></div>
+                        <div><span>AGE</span><b>${profileValue(p.age)}</b></div>
+                        <div><span>BATTING HAND</span><b>${profileValue(p.hand)}</b></div>
+                        <div><span>BATTING POSITION</span><b>${profileValue(p.battingPosition)}</b></div>
+                        <div><span>BOWLING ARM</span><b>${profileValue(p.bowlingArm)}</b></div>
+                        <div><span>BOWLING TYPE</span><b>${profileValue(p.bowlingType)}</b></div>
+                    </div>
+                    <h3>Assessment History</h3>
+                    ${assessmentHistory}
+                    <button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button>
+                </div>`;
             }catch(err){
-                preview.innerHTML='<p class="text-sm text-red-600">Unable to load this player report. Please try again.</p>';
+                preview.innerHTML='<p class="empty-note error-state">Unable to load this player report. Please try again.</p>';
                 console.error('Unable to generate player report:',err);
             }
         };
@@ -2358,12 +2416,69 @@ if (coachLensPlayerSelect) {
                 return;
             }
             const p=allPlayers.find(x=>x.id===s.playerId);
+            const reportValue = value => value == null || String(value).trim() === ''
+                ? '<span class="report-missing">Not recorded</span>'
+                : escapeHtml(String(value));
+            const reportLine = (label, value) => `<div class="report-line"><span>${escapeHtml(label)}</span><b>${reportValue(value)}</b></div>`;
             if(s.kind==='match'){
-                const sr=s.balls ? ((Number(s.runs||0)/Number(s.balls))*100).toFixed(1) : '0.0';
-                document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>MATCH REPORT · ${formatDateDisplay(s.date)}</h2><p>${escapeHtml(p?p.name:'Player')} · ${escapeHtml(s.name||'Match')}</p><div class="report-grid"><div><span>RESULT</span><b>${escapeHtml(s.result||'—')}</b></div><div><span>BATTING</span><b>${Number(s.runs||0)} / ${Number(s.balls||0)} · SR ${sr}</b></div><div><span>BOWLING</span><b>${escapeHtml(String(s.wickets||0))} wickets · ${escapeHtml(String(s.runsConceded||0))} runs</b></div><div><span>FIELDING</span><b>${Number(s.catches||0)} catches · ${Number(s.directHits||0)} direct hits</b></div></div><h3>Batting Context</h3><p>Batting at: <b>${escapeHtml(s.battingAt||'—')}</b> · Dismissal: <b>${escapeHtml(s.dismissalMode||'—')}</b> · Bowler: <b>${escapeHtml(s.bowlerType||'—')}</b></p><p>Shot: ${escapeHtml(s.shotOffered||'—')} · Length: ${escapeHtml(s.length||'—')} · Line: ${escapeHtml(s.line||'—')}</p><h3>Coach / Player Notes</h3><p>${escapeHtml(s.coachPlayerNotes||'No notes recorded.')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
+                const strikeRate = Number(s.balls) > 0 && s.runs != null && String(s.runs).trim() !== ''
+                    ? ((Number(s.runs) / Number(s.balls)) * 100).toFixed(1)
+                    : null;
+                const playerName = p ? p.name : (s.playerId ? 'Player' : 'Team session');
+                document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet">
+                    <h1>COACH'S LENS</h1>
+                    <h2>Match Report</h2>
+                    <p class="report-subtitle">${reportValue(formatDateDisplay(s.date))} · ${reportValue(s.name || 'Match')} · ${reportValue(playerName)}</p>
+                    <div class="report-grid">
+                        <div><span>RESULT</span><b>${reportValue(s.result)}</b></div>
+                        <div><span>RUNS</span><b>${reportValue(s.runs)}</b></div>
+                        <div><span>BALLS</span><b>${reportValue(s.balls)}</b></div>
+                        <div><span>STRIKE RATE</span><b>${strikeRate == null ? '<span class="report-missing">Not calculated</span>' : escapeHtml(strikeRate)}</b></div>
+                    </div>
+                    <h3>Batting Performance</h3>
+                    ${reportLine('Fours', s.fours)}${reportLine('Sixes', s.sixes)}
+                    ${reportLine('Batting position', s.battingAt)}${reportLine('Dismissal mode', s.dismissalMode)}
+                    ${reportLine('Bowler type', s.bowlerType)}${reportLine('Shot offered', s.shotOffered)}
+                    ${reportLine('Length', s.length)}${reportLine('Line', s.line)}
+                    <h3>Bowling Performance</h3>
+                    ${reportLine('Overs', s.overs)}${reportLine('Runs conceded', s.runsConceded)}
+                    ${reportLine('Wickets', s.wickets)}${reportLine('Dot balls', s.dotBalls)}
+                    ${reportLine('Wides', s.wides)}${reportLine('No-balls', s.noBalls)}
+                    <h3>Fielding Performance</h3>
+                    ${reportLine('Catches', s.catches)}${reportLine('Missed catches', s.missedCatches)}
+                    ${reportLine('Run-outs', s.runOuts)}${reportLine('Direct hits', s.directHits)}
+                    ${reportLine('Misfields', s.misfields)}
+                    <h3>Coach / Player Notes</h3>
+                    <p>${reportValue(s.coachPlayerNotes)}</p>
+                    <button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button>
+                </div>`;
                 return;
             }
-            document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet"><h1>COACH'S LENS</h1><h2>${escapeHtml(s.type||'Assessment')} · ${formatDateDisplay(s.date)}</h2><p>${escapeHtml(p?p.name:'Team Session')} · ${escapeHtml(s.category||s.role||'')}</p><h3>Session Objective</h3><p>${escapeHtml(s.objective||'')}</p><h3>Objective Achieved</h3><p><b>${escapeHtml(s.objectiveResult||'—')}</b> ${escapeHtml(s.objectiveReason||'')}</p><h3>What Went Well</h3><p>${escapeHtml(s.wentWell||'')}</p><h3>What Can Be Improved</h3><p>${escapeHtml(s.improve||'')}</p><h3>Coach's Day Note</h3><p>${escapeHtml(s.dayNote||'')}</p><h3>Player Day Notes</h3>${(s.playerDayNotes||[]).map(n=>{const pp=allPlayers.find(x=>x.id===n.playerId);return `<div class="report-line"><span><b>${escapeHtml(pp?pp.name:'Player')}</b><br>${escapeHtml(n.note)}</span><b>${escapeHtml(n.tags||'')}</b></div>`}).join('')||'<p>No player notes.</p>'}<h3>Next Action</h3><p>${escapeHtml(s.nextAction||'')}</p><button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button></div>`;
+            const playerNotes = (s.playerDayNotes || []).length
+                ? s.playerDayNotes.map(note => {
+                    const player = allPlayers.find(x => x.id === note.playerId);
+                    return `<div class="report-line"><span><b>${reportValue(player ? player.name : 'Player')}</b><br>${reportValue(note.note)}</span><b>${reportValue(note.tags)}</b></div>`;
+                }).join('')
+                : '<p class="report-missing">No individual player notes recorded.</p>';
+            document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet">
+                <h1>COACH'S LENS</h1>
+                <h2>${reportValue(s.type || 'Coaching Session')}</h2>
+                <p class="report-subtitle">${reportValue(formatDateDisplay(s.date))} · ${reportValue(s.category)} · ${reportValue(p ? p.name : (s.playerId ? 'Player' : 'Team session'))}</p>
+                <div class="report-grid">
+                    <div><span>DURATION</span><b>${reportValue(s.duration)}${s.duration == null || String(s.duration).trim() === '' ? '' : ' min'}</b></div>
+                    <div><span>SURFACE</span><b>${reportValue(s.surface)}</b></div>
+                    <div><span>CONDITIONS</span><b>${reportValue(s.conditions)}</b></div>
+                    <div><span>OBJECTIVE STATUS</span><b>${reportValue(s.objectiveResult)}</b></div>
+                </div>
+                <h3>Session Objective</h3><p>${reportValue(s.objective)}</p>
+                <h3>Objective Context</h3><p>${reportValue(s.objectiveReason)}</p>
+                <h3>What Went Well</h3><p>${reportValue(s.wentWell)}</p>
+                <h3>What Can Be Improved</h3><p>${reportValue(s.improve)}</p>
+                <h3>General Session Day Note</h3><p>${reportValue(s.dayNote)}</p>
+                <h3>Individual Player Notes</h3>${playerNotes}
+                <h3>Next Session Focus</h3><p>${reportValue(s.nextAction)}</p>
+                <button onclick="window.print()" class="primary-btn mt-4">Print / Save PDF</button>
+            </div>`;
         };
     
         // Global window bindings for inline event handlers and actions
@@ -2391,82 +2506,98 @@ if (coachLensPlayerSelect) {
 
     <style>
         /* ============================================================
-           HIGH DENSITY DESIGN THEME STYLING
-           Palette: Obsidian (#0B0E14), Slate Panels (#0F131A, #131720, #121722)
-           Accents: Emerald (#10B981, #059669), Amber (#F59E0B), Cyan (#38BDF8)
+           COACHLENS 2.0 DESIGN SYSTEM
+           Charcoal surfaces with cricket-green accents and readable contrast
            ============================================================ */
         :root {
-            --bg-base: #0B0E14;
-            --bg-sidebar: #0F131A;
-            --bg-panel: #131720;
-            --bg-card: #121722;
-            --bg-subcard: #182030;
-            --border-subtle: #1E293B;
-            --border-highlight: #334155;
-            --emerald-accent: #10B981;
-            --emerald-dark: #059669;
+            --bg-base: #101512;
+            --bg-sidebar: #151D19;
+            --bg-panel: #1B241F;
+            --bg-card: #1B241F;
+            --bg-subcard: #202B25;
+            --border-subtle: #334139;
+            --border-highlight: #46564C;
+            --emerald-accent: #20C879;
+            --emerald-dark: #137A49;
             --amber-accent: #F59E0B;
-            --text-main: #F1F5F9;
-            --text-body: #CBD5E1;
-            --text-muted: #94A3B8;
+            --danger-accent: #F87171;
+            --text-main: #F5F7F5;
+            --text-body: #B8C4BC;
+            --text-muted: #9AA89F;
         }
 
         html, body {
-            background: #0B0E14 !important;
-            color: #CBD5E1 !important;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-base) !important;
+            color: var(--text-body) !important;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.5;
             scroll-behavior: smooth;
             -webkit-font-smoothing: antialiased;
+        }
+        button, input, select, textarea { font: inherit; }
+        button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+        .side-link:focus-visible, .quick-link:focus-visible, .back-btn:focus-visible {
+            outline: 3px solid var(--emerald-accent);
+            outline-offset: 2px;
+        }
+        button:disabled, input:disabled, select:disabled, textarea:disabled {
+            cursor: not-allowed !important;
+            opacity: 0.58;
+        }
+        [aria-busy="true"] { cursor: progress; }
+        [aria-invalid="true"] {
+            border-color: var(--danger-accent) !important;
+            box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15) !important;
         }
 
         /* Custom subtle scrollbars for high-density UI */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0B0E14; }
-        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-highlight); }
 
         .large-note { min-height: 120px; resize: vertical; line-height: 1.5; }
         .note-box { min-height: 90px; resize: vertical; line-height: 1.5; }
         .day-note { min-height: 180px; resize: vertical; line-height: 1.6; font-size: 13px; }
-        .coach-note-card { border-top: 3px solid #10B981; }
+        .coach-note-card { border-top: 3px solid var(--emerald-accent); }
 
         .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
         .achievement-btn {
-            padding: 10px 8px;
-            border: 1px solid #1E293B;
-            background: #182030;
-            border-radius: 6px;
-            font-size: 10px;
+            padding: 12px 10px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-subcard);
+            border-radius: 8px;
+            font-size: 12px;
             font-weight: 800;
-            color: #94A3B8;
+            color: var(--text-body);
             text-transform: uppercase;
             letter-spacing: 0.04em;
             transition: all 0.15s;
         }
-        .achievement-btn:hover { background: #1F2A3F; border-color: #10B981; color: #F1F5F9; }
+        .achievement-btn:hover { background: #29362F; border-color: var(--emerald-accent); color: var(--text-main); }
         .achievement-btn.selected {
-            background: #059669;
-            border-color: #10B981;
-            color: #FFFFFF;
-            box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+            background: var(--emerald-dark);
+            border-color: var(--emerald-accent);
+            color: var(--text-main);
+            box-shadow: 0 0 12px rgba(32, 200, 121, 0.28);
         }
 
         .player-note-entry {
-            background: #182030;
-            border: 1px solid #1E293B;
+            background: var(--bg-subcard);
+            border: 1px solid var(--border-subtle);
             border-radius: 8px;
             padding: 12px;
             margin-top: 8px;
-            color: #E2E8F0;
+            color: var(--text-body);
         }
         .empty-note {
             padding: 16px;
             text-align: center;
-            font-size: 11px;
-            color: #64748B;
+            font-size: 13px;
+            color: var(--text-muted);
             font-style: italic;
-            background: #121722;
-            border: 1px dashed #1E293B;
+            background: var(--bg-card);
+            border: 1px dashed var(--border-subtle);
             border-radius: 8px;
         }
 
@@ -2475,31 +2606,33 @@ if (coachLensPlayerSelect) {
             align-items: center;
             padding: 2px 8px;
             border-radius: 9999px;
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        .status-pill.good { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .status-pill.good { background: rgba(32, 200, 121, 0.15); color: var(--emerald-accent); border: 1px solid rgba(32, 200, 121, 0.4); }
         .status-pill.partial { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
         .status-pill.not { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4); }
 
-        .day-note-profile { padding: 10px 2px; border-bottom: 1px solid #1E293B; }
-        .day-note-profile b { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; }
-        .day-note-profile p { font-size: 12px; color: #CBD5E1; line-height: 1.5; margin-top: 4px; white-space: pre-wrap; }
-        .day-note-profile small { font-size: 9px; color: #10B981; font-weight: 800; }
+        .day-note-profile { padding: 10px 2px; border-bottom: 1px solid var(--border-subtle); }
+        .day-note-profile b { font-size: 10px; color: var(--text-body); text-transform: uppercase; letter-spacing: 0.05em; }
+        .day-note-profile p { font-size: 12px; color: var(--text-body); line-height: 1.5; margin-top: 4px; white-space: pre-wrap; }
+        .day-note-profile small { font-size: 11px; color: var(--emerald-accent); font-weight: 700; }
+        .day-note-category { color: var(--emerald-accent); font-size: 11px; font-weight: 700; }
+        .player-note-label { color: var(--emerald-accent); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
 
-        @media(max-width: 600px){ .achievement-grid { grid-template-columns: 1fr; } .day-note { min-height: 140px; } }
+        @media(max-width: 600px){ .achievement-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .day-note { min-height: 140px; } }
 
 
         /* ============================================================
-           HIGH DENSITY DASHBOARD & MAIN INTERFACE
+           DASHBOARD & MAIN INTERFACE
            ============================================================ */
         #app-interface {
-            background: #0B0E14 !important;
-            color: #CBD5E1 !important;
+            background: var(--bg-base) !important;
+            color: var(--text-body) !important;
             min-height: 100vh;
-            margin-left: 260px;
+            margin-left: 270px;
         }
         #app-interface > .max-w-\[1100px\] {
             max-width: 1400px !important;
@@ -2507,30 +2640,56 @@ if (coachLensPlayerSelect) {
         }
 
         .dashboard-topline {
-            height: 72px;
+            min-height: 76px;
             padding: 0 4px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            border-bottom: 1px solid #1E293B;
-            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-subtle);
+            margin-bottom: 24px;
         }
-        .welcome-title { color: #FFFFFF !important; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
-        .welcome-subtitle { color: #94A3B8 !important; font-size: 11px; font-weight: 500; }
-        .welcome-title span { color: #10B981 !important; }
-        .coach-user b { color: #FFFFFF !important; }
-        .coach-user small, .coach-user > span { color: #94A3B8 !important; }
-        .coach-user .avatar { background: #1E293B !important; color: #10B981 !important; border: 1px solid #334155; }
+        .welcome-title { color: var(--text-main) !important; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+        .welcome-subtitle { color: var(--text-body) !important; font-size: 14px; font-weight: 500; }
+        .welcome-title span { color: var(--emerald-accent) !important; }
+        .coach-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 0 0 auto;
+            min-width: 0;
+            max-width: min(100%, 280px);
+            padding: 8px 12px 8px 8px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            background: var(--bg-card);
+        }
+        .coach-user b { color: var(--text-main) !important; }
+        .coach-profile-copy { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+        .coach-profile-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .coach-profile-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-body); font-size: 12px; }
+        .coach-user .avatar {
+            display: grid;
+            place-items: center;
+            flex: 0 0 40px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(32, 200, 121, 0.12) !important;
+            color: var(--emerald-accent) !important;
+            border: 1px solid rgba(32, 200, 121, 0.35);
+            font-size: 15px;
+            font-weight: 800;
+        }
 
-        /* Telemetry & High Density Hero */
+        /* Dashboard hero and performance entry points */
         .mock-hero {
             position: relative;
-            height: 380px;
+            height: 340px;
             overflow: hidden;
-            border: 1px solid #1E293B;
-            border-radius: 10px;
-            background: #0B0E14;
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            background: var(--bg-base);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
         .mock-hero-photo {
@@ -2546,55 +2705,55 @@ if (coachLensPlayerSelect) {
             position: absolute;
             inset: 0;
             background:
-                linear-gradient(90deg, #0B0E14 0%, #0B0E14 30%, rgba(11,14,20,0.95) 45%, rgba(11,14,20,0.65) 65%, rgba(11,14,20,0.2) 88%),
-                linear-gradient(0deg, rgba(11,14,20,0.8) 0%, transparent 60%);
+                linear-gradient(90deg, var(--bg-base) 0%, var(--bg-base) 30%, rgba(16, 21, 18, 0.95) 45%, rgba(16, 21, 18, 0.65) 65%, rgba(16, 21, 18, 0.2) 88%),
+                linear-gradient(0deg, rgba(16, 21, 18, 0.8) 0%, transparent 60%);
         }
         .mock-hero-content { position: absolute; inset: 0; display: flex; align-items: center; }
-        .mock-copy { width: 55%; padding: 28px 32px; z-index: 5; }
+        .mock-copy { width: 55%; padding: 36px 40px; z-index: 5; }
         .mock-copy h1 {
-            color: #FFFFFF;
+            color: var(--text-main);
             font-size: clamp(30px, 3.8vw, 48px);
             line-height: 1.05;
             letter-spacing: -0.04em;
             font-weight: 900;
             margin: 0;
         }
-        .mock-copy h1 span { color: #10B981; }
-        .mock-copy > p { margin-top: 14px; color: #CBD5E1; font-size: 14px; line-height: 1.5; font-weight: 400; }
+        .mock-copy h1 span { color: var(--emerald-accent); }
+        .mock-copy > p { margin-top: 16px; color: var(--text-body); font-size: 15px; line-height: 1.6; font-weight: 400; }
         .mock-metrics {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 20px;
-            padding-top: 14px;
-            border-top: 1px solid #1E293B;
+            gap: 12px;
+            margin-top: 22px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-subtle);
             width: 100%;
             max-width: 480px;
         }
         .mock-metrics div {
             min-width: 0;
-            padding: 8px 10px;
-            background: rgba(18, 23, 34, 0.75);
-            border: 1px solid #1E293B;
-            border-radius: 6px;
+            padding: 10px 12px;
+            background: rgba(27, 36, 31, 0.75);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
             display: flex;
             flex-direction: column;
             justify-content: center;
         }
-        .mock-metrics i { display: inline-block; font-style: normal; color: #10B981; font-size: 14px; margin-bottom: 2px; }
-        .mock-metrics b { color: #FFFFFF; font-size: 18px; font-weight: 900; line-height: 1.1; }
-        .mock-metrics small { display: block; color: #94A3B8; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; margin-top: 3px; }
+        .mock-metrics i { display: inline-block; font-style: normal; color: var(--emerald-accent); font-size: 15px; margin-bottom: 4px; }
+        .mock-metrics b { color: var(--text-main); font-size: 26px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+        .mock-metrics small { display: block; color: var(--text-body); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; margin-top: 5px; }
 
-        /* High Density Cards Grid */
-        .mock-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+        /* Dashboard cards */
+        .mock-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px; }
         .mock-card {
-            min-height: 250px;
+            min-height: 220px;
             text-align: left;
-            padding: 16px 14px 14px;
-            border: 1px solid #1E293B;
-            border-radius: 8px;
-            background: #121722;
-            color: #CBD5E1;
+            padding: 20px 18px 18px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            background: var(--bg-card);
+            color: var(--text-body);
             display: flex;
             flex-direction: column;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
@@ -2603,42 +2762,45 @@ if (coachLensPlayerSelect) {
         }
         .mock-card:hover {
             transform: translateY(-2px);
-            background: #161D2B;
-            border-color: #334155;
+            background: #202B25;
+            border-color: var(--border-highlight);
         }
-        .mock-card.blue { border-top: 2px solid #38BDF8; }
-        .mock-card.green { border-top: 2px solid #10B981; }
-        .mock-card.orange { border-top: 2px solid #F59E0B; }
-        .mock-card.purple { border-top: 2px solid #A855F7; }
+        .mock-card.blue, .mock-card.green, .mock-card.orange, .mock-card.purple {
+            border-top: 2px solid var(--emerald-accent);
+        }
 
         .mock-card-top { display: flex; align-items: center; justify-content: space-between; }
-        .mock-card-top span { font-size: 14px; font-weight: 800; color: #64748B; font-family: monospace; }
+        .mock-card-top span { font-size: 14px; font-weight: 800; color: var(--text-muted); font-family: monospace; }
         .mock-card-top strong {
             width: 38px; height: 38px;
-            border-radius: 6px;
+            border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
             font-size: 18px; color: white;
-            background: #1E293B;
-            border: 1px solid #334155;
+            background: var(--border-subtle);
+            border: 1px solid var(--border-highlight);
         }
-        .mock-card.green .mock-card-top strong { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34D399; }
-        .mock-card.blue .mock-card-top strong { background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38BDF8; }
-        .mock-card.orange .mock-card-top strong { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #FBBF24; }
-        .mock-card.purple .mock-card-top strong { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.4); color: #C084FC; }
+        .mock-card.blue .mock-card-top strong, .mock-card.green .mock-card-top strong,
+        .mock-card.orange .mock-card-top strong, .mock-card.purple .mock-card-top strong {
+            background: rgba(32, 200, 121, 0.12);
+            border-color: rgba(32, 200, 121, 0.35);
+            color: var(--emerald-accent);
+        }
 
-        .mock-card h3 { margin: 12px 0 2px; font-size: 13px; font-weight: 900; letter-spacing: 0.03em; }
-        .mock-card.blue h3, .mock-card.blue h4, .mock-card.blue .mock-go { color: #38BDF8; }
-        .mock-card.green h3, .mock-card.green h4, .mock-card.green .mock-go { color: #10B981; }
-        .mock-card.orange h3, .mock-card.orange h4, .mock-card.orange .mock-go { color: #F59E0B; }
-        .mock-card.purple h3, .mock-card.purple h4, .mock-card.purple .mock-go { color: #A855F7; }
-        .mock-card h4 { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
-        .mock-card p { color: #94A3B8; font-size: 11px; line-height: 1.5; margin-top: 10px; }
+        .mock-card h3 { margin: 12px 0 2px; font-size: 14px; font-weight: 900; letter-spacing: 0.03em; }
+        .mock-card.blue h3, .mock-card.blue h4, .mock-card.blue .mock-go,
+        .mock-card.green h3, .mock-card.green h4, .mock-card.green .mock-go,
+        .mock-card.orange h3, .mock-card.orange h4, .mock-card.orange .mock-go,
+        .mock-card.purple h3, .mock-card.purple h4, .mock-card.purple .mock-go {
+            color: var(--emerald-accent);
+        }
+        .mock-card h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+        .mock-card p { color: var(--text-body); font-size: 13px; line-height: 1.55; margin-top: 10px; }
         .mock-go {
             margin-top: auto;
             border: 1px solid currentColor;
             border-radius: 5px;
             padding: 8px 10px;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -2650,44 +2812,44 @@ if (coachLensPlayerSelect) {
 
         .mock-footer {
             margin-top: 12px;
-            border: 1px solid #1E293B;
+            border: 1px solid var(--border-subtle);
             border-radius: 8px;
-            background: #121722;
+            background: var(--bg-card);
             min-height: 48px;
             display: flex;
             align-items: center;
             padding: 10px 16px;
             gap: 12px;
         }
-        .mock-footer span { color: #10B981; font-size: 18px; }
-        .mock-footer p { color: #94A3B8; font-size: 11px; }
-        .mock-footer b { color: #34D399; }
+        .mock-footer span { color: var(--emerald-accent); font-size: 18px; }
+        .mock-footer p { color: var(--text-body); font-size: 11px; }
+        .mock-footer b { color: var(--emerald-accent); }
 
         /* Metric Score Compact Form Elements */
         .metric-score-field {
-            background: #0F131A;
-            border: 1px solid #1E293B;
-            border-radius: 6px;
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
             padding: 9px 10px;
             transition: border-color 0.15s;
         }
         .metric-score-field:hover, .metric-score-field:focus-within {
-            border-color: #334155;
+            border-color: var(--border-highlight);
         }
         .score-badge {
             font-size: 10px;
             font-weight: 900;
             padding: 2px 6px;
             border-radius: 4px;
-            background: #182030;
-            color: #64748B;
-            border: 1px solid #1E293B;
+            background: var(--bg-subcard);
+            color: var(--text-muted);
+            border: 1px solid var(--border-subtle);
             white-space: nowrap;
         }
         .score-badge.has-score {
-            background: rgba(16, 185, 129, 0.15);
-            color: #34D399;
-            border-color: rgba(16, 185, 129, 0.4);
+            background: rgba(32, 200, 121, 0.15);
+            color: var(--emerald-accent);
+            border-color: rgba(32, 200, 121, 0.4);
         }
         .score-pills {
             display: flex;
@@ -2695,37 +2857,37 @@ if (coachLensPlayerSelect) {
             align-items: center;
         }
         .score-pill-btn {
-            min-width: 28px;
-            min-height: 28px;
+            min-width: 38px;
+            min-height: 38px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             font-size: 11px;
             font-weight: 900;
             border-radius: 4px;
-            background: #182030;
-            color: #94A3B8;
-            border: 1px solid #1E293B;
+            background: var(--bg-subcard);
+            color: var(--text-body);
+            border: 1px solid var(--border-subtle);
             cursor: pointer;
             transition: all 0.12s;
             touch-action: manipulation;
             user-select: none;
         }
         .score-pill-btn:hover {
-            background: #222C40;
-            color: #FFFFFF;
-            border-color: #334155;
+            background: #29362F;
+            color: var(--text-main);
+            border-color: var(--border-highlight);
         }
         .score-pill-btn.active {
-            background: #059669 !important;
-            color: #FFFFFF !important;
-            border-color: #10B981 !important;
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+            background: var(--emerald-dark) !important;
+            color: var(--text-main) !important;
+            border-color: var(--emerald-accent) !important;
+            box-shadow: 0 0 8px rgba(32, 200, 121, 0.35);
         }
         .score-pill-btn.score-clear-btn {
             font-size: 9px;
             min-width: 24px;
-            color: #64748B;
+            color: var(--text-muted);
         }
         .score-pill-btn.score-clear-btn:hover {
             color: #EF4444;
@@ -2747,8 +2909,8 @@ if (coachLensPlayerSelect) {
                 justify-content: space-between;
                 height: 54px;
                 padding: 0 16px;
-                background: #0F131A;
-                border-bottom: 1px solid #1E293B;
+                background: var(--bg-sidebar);
+                border-bottom: 1px solid var(--border-subtle);
                 position: sticky;
                 top: 0;
                 z-index: 70;
@@ -2778,9 +2940,8 @@ if (coachLensPlayerSelect) {
         }
         @media(max-width: 700px){
             .dashboard-topline { height: auto; padding: 10px 0; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
-            .mock-hero { height: auto; min-height: 480px; }
             .mock-hero-photo { width: 100%; height: 100%; opacity: .45; background-position: center 20%; }
-            .mock-hero-shade { background: linear-gradient(90deg, rgba(6,17,31,.96), rgba(6,17,31,.7)), linear-gradient(0deg, rgba(6,17,31,.9), transparent); }
+            .mock-hero-shade { background: linear-gradient(90deg, rgba(16, 21, 18, .96), rgba(16, 21, 18, .7)), linear-gradient(0deg, rgba(16, 21, 18, .9), transparent); }
             .mock-copy { width: 100%; padding: 22px 18px; }
             .mock-copy h1 { font-size: 32px; }
             .mock-metrics { grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -2791,45 +2952,45 @@ if (coachLensPlayerSelect) {
         }
 
         /* ============================================================
-           SIDEBAR STYLING - HIGH DENSITY
+           SIDEBAR STYLING
            ============================================================ */
         .elite-sidebar {
             position: fixed;
             left: 0; top: 0; bottom: 0;
             width: 270px;
             z-index: 80;
-            background: #0F131A;
-            color: #CBD5E1;
+            background: var(--bg-sidebar);
+            color: var(--text-body);
             padding: 16px 14px 14px;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #1E293B;
+            border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
             transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .brand-block { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 2px 16px; }
         .brand-mark {
             width: 36px; height: 36px;
-            border: 1px solid #10B981;
-            background: #059669;
-            border-radius: 6px;
+            border: 1px solid var(--emerald-accent);
+            background: var(--emerald-dark);
+            border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
-            color: #FFFFFF; font-size: 18px; font-weight: 900;
-            box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+            color: var(--text-main); font-size: 18px; font-weight: 900;
+            box-shadow: 0 0 12px rgba(32, 200, 121, 0.3);
         }
-        .brand-title { font-size: 15px; line-height: 1; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; }
-        .brand-title span { color: #10B981; }
-        .brand-subtitle { font-size: 8px; letter-spacing: 0.25em; font-weight: 800; color: #64748B; margin-top: 4px; }
+        .brand-title { font-size: 15px; line-height: 1; font-weight: 900; color: var(--text-main); letter-spacing: -0.02em; }
+        .brand-title span { color: var(--emerald-accent); }
+        .brand-subtitle { font-size: 8px; letter-spacing: 0.25em; font-weight: 800; color: var(--text-muted); margin-top: 4px; }
         .sidebar-close-btn {
             display: none;
             width: 36px;
             height: 36px;
             align-items: center;
             justify-content: center;
-            border-radius: 6px;
-            border: 1px solid #1E293B;
-            background: #182030;
-            color: #94A3B8;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-subcard);
+            color: var(--text-body);
             font-size: 16px;
             cursor: pointer;
         }
@@ -2843,33 +3004,33 @@ if (coachLensPlayerSelect) {
             align-items: center;
             gap: 10px;
             border: 1px solid transparent;
-            border-radius: 6px;
+            border-radius: 8px;
             background: transparent;
-            color: #94A3B8;
+            color: var(--text-body);
             padding: 10px 12px;
             min-height: 44px;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 700;
             text-align: left;
             transition: all 0.15s;
             cursor: pointer;
             touch-action: manipulation;
         }
-        .side-link:hover { background: #161D2B; color: #FFFFFF; border-color: #1E293B; }
+        .side-link:hover { background: #202B25; color: var(--text-main); border-color: var(--border-subtle); }
         .side-link.active {
-            background: rgba(16, 185, 129, 0.12);
-            color: #34D399;
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+            background: rgba(32, 200, 121, 0.12);
+            color: var(--emerald-accent);
+            border: 1px solid rgba(32, 200, 121, 0.35);
+            box-shadow: 0 0 10px rgba(32, 200, 121, 0.15);
         }
         .side-icon { width: 18px; text-align: center; font-size: 15px; line-height: 1; color: inherit; }
-        .sidebar-divider { height: 1px; background: #1E293B; margin: 14px 0; }
-        .quick-label { font-size: 9px; color: #10B981; font-weight: 900; letter-spacing: 0.15em; margin: 0 4px 6px; }
+        .sidebar-divider { height: 1px; background: var(--border-subtle); margin: 14px 0; }
+        .quick-label { font-size: 10px; color: var(--emerald-accent); font-weight: 900; letter-spacing: 0.12em; margin: 0 4px 6px; }
         .quick-actions { display: flex; flex-direction: column; gap: 4px; }
         .quick-link {
             border: 1px solid transparent;
             background: transparent;
-            color: #94A3B8;
+            color: var(--text-body);
             text-align: left;
             padding: 9px 10px;
             min-height: 44px;
@@ -2883,23 +3044,23 @@ if (coachLensPlayerSelect) {
             cursor: pointer;
             touch-action: manipulation;
         }
-        .quick-link:hover { background: #161D2B; color: #FFFFFF; border-color: #1E293B; }
-        .quick-link span { color: #10B981; font-size: 15px; font-weight: 900; }
+        .quick-link:hover { background: #202B25; color: var(--text-main); border-color: var(--border-subtle); }
+        .quick-link span { color: var(--emerald-accent); font-size: 15px; font-weight: 900; }
         .sidebar-quote {
             margin-top: auto;
             padding: 12px;
-            border: 1px solid #1E293B;
+            border: 1px solid var(--border-subtle);
             border-radius: 8px;
-            background: #121722;
+            background: var(--bg-card);
         }
-        .sidebar-quote b { color: #10B981; font-size: 20px; line-height: 0.5; }
-        .sidebar-quote p { color: #94A3B8; font-size: 10px; line-height: 1.5; margin: 6px 0 8px; }
-        .sidebar-quote span { color: #34D399; font-size: 9px; font-weight: 800; }
+        .sidebar-quote b { color: var(--emerald-accent); font-size: 20px; line-height: 0.5; }
+        .sidebar-quote p { color: var(--text-body); font-size: 10px; line-height: 1.5; margin: 6px 0 8px; }
+        .sidebar-quote span { color: var(--emerald-accent); font-size: 9px; font-weight: 800; }
         .sidebar-logout {
             margin-top: 10px;
-            background: #182030;
-            border: 1px solid #1E293B;
-            color: #94A3B8;
+            background: var(--bg-subcard);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-body);
             border-radius: 6px;
             padding: 10px;
             min-height: 44px;
@@ -2914,71 +3075,111 @@ if (coachLensPlayerSelect) {
             transition: all 0.15s;
             touch-action: manipulation;
         }
-        .sidebar-logout:hover { background: #222C40; color: #F1F5F9; border-color: #334155; }
+        .sidebar-logout:hover { background: #29362F; color: var(--text-main); border-color: var(--border-highlight); }
         
         /* Mobile Topbar UI */
         .mobile-topbar { display: none; }
         .hamburger {
             width: 44px; height: 44px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 20px; color: #CBD5E1;
-            background: #182030;
-            border: 1px solid #1E293B;
+            font-size: 20px; color: var(--text-body);
+            background: var(--bg-subcard);
+            border: 1px solid var(--border-subtle);
             border-radius: 6px;
             cursor: pointer;
             touch-action: manipulation;
         }
         .hamburger:hover, .hamburger:active {
-            background: #222C40;
-            color: #FFFFFF;
-            border-color: #334155;
+            background: #29362F;
+            color: var(--text-main);
+            border-color: var(--border-highlight);
         }
         .mobile-home {
             width: 44px; height: 44px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 18px; color: #10B981;
-            background: #182030;
-            border: 1px solid #1E293B;
+            font-size: 18px; color: var(--emerald-accent);
+            background: var(--bg-subcard);
+            border: 1px solid var(--border-subtle);
             border-radius: 6px;
             cursor: pointer;
             touch-action: manipulation;
         }
         .mobile-home:hover, .mobile-home:active {
-            background: #222C40;
-            border-color: #334155;
+            background: #29362F;
+            border-color: var(--border-highlight);
         }
-        .mobile-brand { font-size: 14px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; }
-        .mobile-brand span { color: #10B981; }
+        .mobile-brand { font-size: 14px; font-weight: 900; color: var(--text-main); letter-spacing: -0.02em; }
+        .mobile-brand span { color: var(--emerald-accent); }
 
         /* ============================================================
-           GENERIC CONTAINER & FORM STYLING - HIGH DENSITY
+           GENERIC CONTAINER & FORM STYLING
            ============================================================ */
         .app-section { max-width: 1400px; margin: 0 auto; }
-        .section-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
-        .section-header h2 { font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.02em; margin-top: 4px; }
-        .section-header p { color: #94A3B8; font-size: 11px; }
-        .back-btn { color: #10B981; font-size: 11px; font-weight: 800; cursor: pointer; }
+        .section-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
+        .section-header h2 { font-size: 24px; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em; margin-top: 6px; }
+        .section-header p { color: var(--text-body); font-size: 14px; }
+        .back-btn { color: var(--emerald-accent); font-size: 13px; font-weight: 700; cursor: pointer; min-height: 36px; }
         .back-btn:hover { text-decoration: underline; }
+        #app-interface .text-white,
+        #app-interface .text-slate-100,
+        #app-interface .text-slate-200,
+        #app-interface .text-slate-800,
+        #app-interface .text-slate-900 { color: var(--text-main) !important; }
+        #app-interface .text-slate-300,
+        #app-interface .text-slate-400,
+        #app-interface .text-slate-500,
+        #app-interface .text-slate-600 { color: var(--text-body) !important; }
+        #app-interface .text-red-500,
+        #app-interface .text-red-600,
+        #app-interface .text-red-700 { color: var(--danger-accent) !important; }
+        #app-interface [class*="border-slate-"] { border-color: var(--border-subtle) !important; }
 
         .form-card {
-            background: #121722 !important;
-            border-radius: 8px !important;
-            border: 1px solid #1E293B !important;
-            padding: 1.25rem !important;
+            background: var(--bg-card) !important;
+            border-radius: 12px !important;
+            border: 1px solid var(--border-subtle) !important;
+            padding: 1.5rem !important;
             margin-bottom: 1.25rem !important;
-            color: #CBD5E1 !important;
+            color: var(--text-body) !important;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
         }
+        .registration-form > div:not(:last-child) {
+            padding-bottom: 22px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .registration-form .form-section-heading { font-size: 13px !important; }
+        .profile-card-header { flex-wrap: wrap; }
+        .profile-actions { flex-wrap: wrap; }
+        .player-id-container {
+            background: rgba(32, 200, 121, 0.08);
+            border: 1px solid rgba(32, 200, 121, 0.25);
+        }
+        .player-id-container .player-id-badge { min-height: auto; padding: 3px 7px; }
         .form-card.bg-white, .bg-white.rounded-xl {
-            background: #121722 !important;
-            border-color: #1E293B !important;
-            color: #CBD5E1 !important;
+            background: var(--bg-card) !important;
+            border-color: var(--border-subtle) !important;
+            color: var(--text-body) !important;
+        }
+        .form-section-heading {
+            color: var(--text-main) !important;
+            border-color: var(--border-subtle) !important;
+            gap: 12px;
+        }
+        .profile-section-heading {
+            padding: 11px 0 8px;
+            margin-top: 4px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--emerald-accent);
+            font-size: 12px;
+            font-weight: 850;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
         }
 
         label {
             font-weight: 800 !important;
-            color: #94A3B8 !important;
-            font-size: 0.65rem !important;
+            color: var(--text-body) !important;
+            font-size: 0.75rem !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
             margin-bottom: 0.25rem !important;
@@ -2986,98 +3187,108 @@ if (coachLensPlayerSelect) {
         }
 
         input, select, textarea {
-            background: #0B0E14 !important;
-            color: #F1F5F9 !important;
-            -webkit-text-fill-color: #F1F5F9 !important;
-            border: 1px solid #1E293B !important;
-            border-radius: 6px !important;
-            padding: 7px 10px !important;
-            font-size: 0.85rem !important;
+            background: var(--bg-base) !important;
+            color: var(--text-main) !important;
+            -webkit-text-fill-color: var(--text-main) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 8px !important;
+            padding: 10px 12px !important;
+            font-size: 0.925rem !important;
             width: 100% !important;
-            min-height: 38px !important;
+            min-height: 44px !important;
             transition: border-color 0.15s, box-shadow 0.15s !important;
         }
         input::placeholder, textarea::placeholder {
-            color: #64748B !important;
-            -webkit-text-fill-color: #64748B !important;
+            color: var(--text-muted) !important;
+            -webkit-text-fill-color: var(--text-muted) !important;
             opacity: 1 !important;
         }
         input:focus, select:focus, textarea:focus {
-            outline: 2px solid rgba(16, 185, 129, 0.3) !important;
-            border-color: #10B981 !important;
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
+            outline: 3px solid rgba(32, 200, 121, 0.32) !important;
+            outline-offset: 1px;
+            border-color: var(--emerald-accent) !important;
+            box-shadow: 0 0 10px rgba(32, 200, 121, 0.2) !important;
         }
+        input[type="checkbox"], input[type="radio"] { width: auto !important; min-height: 0 !important; accent-color: var(--emerald-accent); }
         select option, select optgroup {
-            color: #F1F5F9 !important;
-            -webkit-text-fill-color: #F1F5F9 !important;
-            background-color: #0F131A !important;
+            color: var(--text-main) !important;
+            -webkit-text-fill-color: var(--text-main) !important;
+            background-color: var(--bg-sidebar) !important;
         }
 
         /* Buttons */
         .primary-btn {
-            background: #059669 !important;
-            color: #FFFFFF !important;
-            padding: 8px 14px !important;
-            border-radius: 6px !important;
-            font-size: 10px !important;
+            background: var(--emerald-dark) !important;
+            color: var(--text-main) !important;
+            padding: 10px 16px !important;
+            border-radius: 8px !important;
+            font-size: 11px !important;
             font-weight: 900 !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
-            border: 1px solid #10B981 !important;
-            box-shadow: 0 0 12px rgba(16, 185, 129, 0.22) !important;
+            border: 1px solid var(--emerald-accent) !important;
+            min-height: 44px;
+            box-shadow: 0 0 12px rgba(32, 200, 121, 0.22) !important;
             cursor: pointer;
             transition: all 0.15s;
         }
         .primary-btn:hover {
-            background: #10B981 !important;
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.35) !important;
+            background: var(--emerald-accent) !important;
+            color: var(--bg-base) !important;
+            box-shadow: 0 0 16px rgba(32, 200, 121, 0.35) !important;
         }
 
         .secondary-btn {
-            background: #182030 !important;
-            color: #CBD5E1 !important;
-            padding: 8px 14px !important;
-            border-radius: 6px !important;
-            font-size: 10px !important;
+            background: var(--bg-subcard) !important;
+            color: var(--text-body) !important;
+            padding: 10px 16px !important;
+            border-radius: 8px !important;
+            font-size: 11px !important;
             font-weight: 900 !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
-            border: 1px solid #1E293B !important;
+            border: 1px solid var(--border-subtle) !important;
+            min-height: 44px;
             cursor: pointer;
             transition: all 0.15s;
         }
         .secondary-btn:hover {
-            background: #222C40 !important;
-            color: #FFFFFF !important;
-            border-color: #334155 !important;
+            background: #29362F !important;
+            color: var(--text-main) !important;
+            border-color: var(--border-highlight) !important;
         }
 
         .danger-btn {
             background: rgba(220, 38, 38, 0.2) !important;
             border: 1px solid rgba(239, 68, 68, 0.45) !important;
             color: #FCA5A5 !important;
-            padding: 8px 14px !important;
-            border-radius: 6px !important;
-            font-size: 10px !important;
+            padding: 10px 16px !important;
+            border-radius: 8px !important;
+            font-size: 11px !important;
             font-weight: 900 !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
+            min-height: 44px;
             cursor: pointer;
             transition: all 0.15s;
         }
         .danger-btn:hover {
             background: rgba(220, 38, 38, 0.35) !important;
-            color: #FFFFFF !important;
+            color: var(--text-main) !important;
             border-color: #EF4444 !important;
+        }
+        .primary-btn:disabled, .secondary-btn:disabled, .danger-btn:disabled {
+            box-shadow: none !important;
+            transform: none !important;
         }
 
         .pro-tag {
-            background: #182030 !important;
-            color: #34D399 !important;
-            border: 1px solid #059669 !important;
-            padding: 2px 8px !important;
-            border-radius: 4px !important;
-            font-size: 9px !important;
+            background: var(--bg-subcard) !important;
+            color: var(--emerald-accent) !important;
+            border: 1px solid var(--border-subtle) !important;
+            padding: 4px 9px !important;
+            border-radius: 9999px !important;
+            font-size: 11px !important;
             font-weight: 900 !important;
             letter-spacing: 0.06em !important;
             text-transform: uppercase !important;
@@ -3087,45 +3298,58 @@ if (coachLensPlayerSelect) {
 
         /* Choice Cards & Subcards */
         .choice-card {
-            background: #121722 !important;
-            border: 1px solid #1E293B !important;
-            border-radius: 8px !important;
-            padding: 18px !important;
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 12px !important;
+            min-height: 148px;
+            padding: 22px !important;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
             text-align: left;
             cursor: pointer;
             transition: all 0.15s;
         }
         .choice-card:hover {
-            border-color: #10B981 !important;
-            background: #161D2B !important;
+            border-color: var(--emerald-accent) !important;
+            background: #202B25 !important;
             transform: translateY(-2px);
         }
-        .choice-num { font-size: 10px; font-weight: 900; color: #10B981 !important; font-family: monospace; }
-        .choice-card b { font-size: 15px; font-weight: 900; color: #FFFFFF !important; }
-        .choice-card small { color: #94A3B8 !important; font-size: 11px; }
+        .choice-num {
+            display: grid;
+            place-items: center;
+            width: 30px;
+            height: 30px;
+            border: 1px solid rgba(32, 200, 121, 0.3);
+            border-radius: 9px;
+            background: rgba(32, 200, 121, 0.1);
+            font-size: 12px;
+            font-weight: 900;
+            color: var(--emerald-accent) !important;
+            font-family: monospace;
+        }
+        .choice-card b { font-size: 17px; font-weight: 800; color: var(--text-main) !important; }
+        .choice-card small { color: var(--text-body) !important; font-size: 13px; line-height: 1.45; }
 
         .sub-card {
-            border: 1px solid #1E293B !important;
+            border: 1px solid var(--border-subtle) !important;
             border-radius: 6px !important;
             padding: 12px !important;
-            background: #182030 !important;
-            color: #CBD5E1 !important;
+            background: var(--bg-subcard) !important;
+            color: var(--text-body) !important;
         }
         .stat-card, .score-card {
-            background: #121722 !important;
-            border: 1px solid #1E293B !important;
-            border-radius: 8px !important;
-            padding: 12px !important;
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 12px !important;
+            padding: 16px !important;
         }
         .stat-card span, .score-card span {
             display: block;
-            font-size: 9px;
+            font-size: 11px;
             text-transform: uppercase;
             font-weight: 800;
-            color: #64748B !important;
+            color: var(--text-muted) !important;
             letter-spacing: 0.05em;
         }
         .stat-card b, .score-card b {
@@ -3133,129 +3357,372 @@ if (coachLensPlayerSelect) {
             font-size: 18px;
             font-weight: 900;
             margin-top: 3px;
-            color: #FFFFFF !important;
+            color: var(--text-main) !important;
         }
 
         /* Player & Session Rows */
         .player-card {
-            padding: 10px 14px !important;
-            border-bottom: 1px solid #1E293B !important;
+            min-height: 72px;
+            padding: 13px 16px !important;
+            border-bottom: 1px solid var(--border-subtle) !important;
             display: flex;
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
-            transition: background 0.15s;
-            color: #E2E8F0;
-            background: #121722;
+            transition: background 0.15s, border-color 0.15s;
+            color: #DCE5DE;
+            background: var(--bg-card);
         }
-        .player-card:hover { background: #182030 !important; }
-        .player-card b { color: #FFFFFF !important; }
+        .player-card:hover { background: var(--bg-subcard) !important; }
+        .player-card b { color: var(--text-main) !important; }
+        .player-card > div:first-child { flex: 1 1 auto; min-width: 0; }
+        .player-card > div:last-child { flex: 0 0 auto; }
+        .player-filter-bar { margin-bottom: 14px; }
+        .count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 6px 12px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            background: var(--bg-subcard);
+            color: var(--text-body);
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+        .player-card > div:first-child > div:last-child > div { gap: 6px 8px; }
+        .player-card > div:last-child { min-width: 105px; }
+        .player-meta { color: var(--text-body) !important; font-size: 12px !important; }
+        .player-card > div:last-child .text-emerald-400 { font-size: 13px; }
+        .player-card > div:last-child .text-slate-400 { font-size: 11px; }
+        .player-id-badge, .player-role-badge, .player-level-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 9px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .player-id-badge {
+            color: var(--emerald-accent);
+            background: rgba(32, 200, 121, 0.08);
+            border-color: rgba(32, 200, 121, 0.28);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        .player-role-badge, .player-level-badge {
+            color: var(--text-body);
+            background: var(--bg-subcard);
+        }
+        .role-batter, .role-bowler, .role-all-rounder, .role-wicketkeeper {
+            color: var(--emerald-accent);
+            background: rgba(32, 200, 121, 0.1);
+            border-color: rgba(32, 200, 121, 0.28);
+        }
+        .role-default { color: var(--text-body); }
         .session-row {
-            padding: 9px 6px !important;
-            border-bottom: 1px solid #1E293B !important;
+            padding: 12px 8px !important;
+            border-bottom: 1px solid var(--border-subtle) !important;
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 8px;
-            color: #CBD5E1;
+            color: var(--text-body);
             transition: background 0.15s;
         }
-        .session-row:hover { background: #182030 !important; }
+        .session-row:hover { background: var(--bg-subcard) !important; }
         .session-row:last-child { border-bottom: none !important; }
+        .session-history-card, .match-history-card { overflow: hidden; }
+        .session-stage { border-left: 3px solid var(--emerald-accent) !important; }
+        .session-stage .pro-tag { margin-bottom: 16px !important; }
+        .match-performance-panel { display: flex; flex-direction: column; gap: 7px; }
+        .match-performance-panel h3 {
+            margin-bottom: 4px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-main);
+            font-size: 14px;
+            font-weight: 800;
+        }
+        .match-performance-panel label { margin: 3px 0 0 !important; }
+        .match-performance-panel input { margin-top: 0 !important; }
+        .match-performance-panel input + label { margin-top: 4px !important; }
+        .assessment-section { border-top: 2px solid var(--emerald-accent) !important; }
+        .coaching-empty-state {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            max-width: 560px;
+            margin: 8px auto;
+            padding: 16px 18px;
+            border: 1px dashed var(--border-highlight);
+            border-radius: 12px;
+            background: rgba(32, 43, 37, 0.55);
+        }
+        .coaching-empty-icon {
+            display: grid;
+            place-items: center;
+            flex: 0 0 38px;
+            width: 38px;
+            height: 38px;
+            border: 1px solid rgba(32, 200, 121, 0.3);
+            border-radius: 10px;
+            background: rgba(32, 200, 121, 0.1);
+            color: var(--emerald-accent);
+            font-size: 21px;
+        }
+        .coaching-empty-state b { color: var(--text-main); font-size: 14px; }
+        .coaching-empty-state p { margin-top: 3px; color: var(--text-body); font-size: 13px; }
+        .session-row .text-slate-800,
+        .form-card .text-slate-900,
+        .form-card .text-slate-800 { color: var(--text-main) !important; }
+        .form-card .text-slate-500, .form-card .text-slate-600 { color: var(--text-body) !important; }
+        .session-meta, .session-note-count { color: var(--text-body); font-size: 12px; }
+        .session-meta { text-transform: uppercase; }
+        .session-objective { margin-top: 5px; color: var(--text-body); font-size: 13px; line-height: 1.45; }
         .btn-mini {
-            font-size: 9px !important;
+            font-size: 11px !important;
             font-weight: 800 !important;
             text-transform: uppercase !important;
-            padding: 4px 8px !important;
-            border-radius: 4px !important;
+            padding: 7px 11px !important;
+            border-radius: 6px !important;
             white-space: nowrap !important;
-            min-height: 28px !important;
+            min-height: 44px !important;
         }
 
         .session-context-card {
-            border: 1px solid #1E293B !important;
-            background: #121722 !important;
+            border: 1px solid var(--border-subtle) !important;
+            background: var(--bg-card) !important;
         }
         .context-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .context-head p { margin-top: 4px; color: #94A3B8 !important; font-size: 11px; line-height: 1.4; }
+        .context-head p { margin-top: 4px; color: var(--text-body) !important; font-size: 11px; line-height: 1.4; }
 
         /* Report Sheet */
         .report-sheet {
             max-width: 850px;
             margin: auto;
-            background: #121722 !important;
-            border: 1px solid #1E293B !important;
-            color: #CBD5E1 !important;
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-subtle) !important;
+            color: var(--text-body) !important;
         }
-        .report-sheet h1 { font-size: 20px; font-weight: 900; color: #10B981 !important; letter-spacing: -0.02em; }
-        .report-sheet h2 { font-size: 22px; font-weight: 900; color: #FFFFFF !important; margin-top: 8px; }
+        .report-sheet h1 { font-size: 20px; font-weight: 900; color: var(--emerald-accent) !important; letter-spacing: -0.02em; }
+        .report-sheet h2 { font-size: 22px; font-weight: 900; color: var(--text-main) !important; margin-top: 8px; }
         .report-sheet h3 {
             font-size: 11px; font-weight: 900; text-transform: uppercase;
-            color: #34D399 !important; border-bottom: 1px solid #1E293B;
+            color: var(--emerald-accent) !important; border-bottom: 1px solid var(--border-subtle);
             padding-bottom: 4px; margin-top: 16px; letter-spacing: 0.05em;
         }
-        .report-score { font-size: 38px; font-weight: 900; color: #10B981 !important; margin: 10px 0; }
+        .report-score { font-size: 38px; font-weight: 900; color: var(--emerald-accent) !important; margin: 10px 0; }
         .report-line {
             display: flex; justify-content: space-between;
-            padding: 6px 0; border-bottom: 1px solid #1E293B; font-size: 12px;
-            color: #CBD5E1;
+            gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px;
+            color: var(--text-body);
         }
-        .report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
-        .report-grid > div { padding: 10px; border: 1px solid #1E293B; border-radius: 6px; background: #182030; }
-        .report-grid span { display: block; font-size: 8px; font-weight: 900; color: #64748B; letter-spacing: 0.08em; }
-        .report-grid b { display: block; margin-top: 4px; font-size: 12px; color: #FFFFFF; }
+        .report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+        .report-grid > div { padding: 14px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-subcard); }
+        .report-grid span { display: block; font-size: 11px; font-weight: 900; color: var(--text-body); letter-spacing: 0.08em; }
+        .report-grid b { display: block; margin-top: 6px; font-size: 14px; color: var(--text-main); }
+        .report-subtitle { margin-top: 8px; color: var(--text-body); }
+        .report-missing { color: var(--text-muted); font-style: italic; font-weight: 500; }
+        .report-history-entry { margin-top: 18px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-subcard); break-inside: avoid; }
+        .report-history-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+        .report-history-heading h4 { color: var(--text-main); font-size: 15px; font-weight: 800; }
+        .report-history-heading p { color: var(--text-body); font-size: 12px; }
+        .report-history-heading > strong { color: var(--emerald-accent); font-size: 18px; font-variant-numeric: tabular-nums; }
+        .report-subheading { margin-top: 16px; color: var(--text-main); font-size: 13px; font-weight: 800; }
+        .report-option-card { min-height: 100%; }
+        .report-option-card > p { min-height: 48px; color: var(--text-body) !important; line-height: 1.5; }
+        .report-sheet p { line-height: 1.55; }
+        .report-sheet .report-history-entry table { margin-top: 10px; }
         @media(max-width: 700px){ .report-grid { grid-template-columns: repeat(2, 1fr); } }
 
         /* Coach Education Cards & Security Banner */
         .education-security-banner {
             display: flex; gap: 12px; align-items: flex-start;
-            background: rgba(16, 185, 129, 0.08) !important;
-            border: 1px solid rgba(16, 185, 129, 0.3) !important;
-            border-radius: 8px; padding: 14px; margin-bottom: 16px;
+            background: rgba(32, 200, 121, 0.08) !important;
+            border: 1px solid rgba(32, 200, 121, 0.3) !important;
+            border-radius: 12px; padding: 16px; margin-bottom: 20px;
         }
         .education-shield { font-size: 22px; }
-        .education-security-banner b { display: block; color: #34D399 !important; font-size: 12px; }
-        .education-security-banner span { display: block; color: #94A3B8 !important; font-size: 11px; line-height: 1.5; margin-top: 2px; }
+        .education-security-banner b { display: block; color: var(--emerald-accent) !important; font-size: 12px; }
+        .education-security-banner span { display: block; color: var(--text-body) !important; font-size: 13px; line-height: 1.5; margin-top: 2px; }
         .education-card {
-            background: #121722 !important;
-            border: 1px solid #1E293B !important;
-            border-radius: 8px !important;
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 12px !important;
             padding: 16px !important;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-            color: #CBD5E1;
+            color: var(--text-body);
         }
         .education-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        .education-card h3 { font-size: 15px; font-weight: 900; color: #FFFFFF !important; margin-top: 10px; }
-        .education-card p { font-size: 11px; line-height: 1.5; color: #94A3B8 !important; margin-top: 6px; min-height: 48px; }
+        .education-card h3 { font-size: 15px; font-weight: 900; color: var(--text-main) !important; margin-top: 10px; }
+        .education-card p { font-size: 13px; line-height: 1.55; color: var(--text-body) !important; margin-top: 6px; min-height: 48px; }
         .education-meta {
             display: flex; justify-content: space-between; gap: 8px;
-            margin-top: 10px; font-size: 9px; font-weight: 800; color: #64748B !important; text-transform: uppercase;
+            margin-top: 10px; font-size: 11px; font-weight: 800; color: var(--text-body) !important; text-transform: uppercase;
         }
-        .education-lock { font-size: 9px; font-weight: 900; color: #10B981 !important; letter-spacing: 0.08em; }
-        .edu-tag { font-size: 9px; font-weight: 800; background: #182030; color: #34D399; border: 1px solid #1E293B; border-radius: 9999px; padding: 2px 7px; }
+        .education-lock { font-size: 10px; font-weight: 900; color: var(--emerald-accent) !important; letter-spacing: 0.08em; }
+        .edu-tag { font-size: 10px; font-weight: 800; background: var(--bg-subcard); color: var(--emerald-accent); border: 1px solid var(--border-subtle); border-radius: 9999px; padding: 3px 8px; }
         .education-toolbar { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 16px; }
         @media(max-width: 700px){ .education-toolbar { grid-template-columns: 1fr; } .education-card p { min-height: auto; } }
+        .current-coaches, .education-admin-subsection {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .current-coaches > h4 {
+            margin-bottom: 14px;
+            color: var(--text-main);
+            font-size: 16px;
+            font-weight: 800;
+        }
+        .current-coaches-list { display: grid; gap: 10px; }
+        .coach-access-row, .education-request-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 18px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            background: var(--bg-subcard);
+            color: var(--text-body);
+        }
+        .coach-access-details {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            min-width: 0;
+        }
+        .coach-access-details > b {
+            color: var(--text-main);
+            font-size: 14px;
+            font-weight: 750;
+        }
+        .coach-access-details > p {
+            flex: 0 0 100%;
+            min-width: 0;
+            color: var(--text-body);
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+        .coach-role-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 9px;
+            border: 1px solid rgba(32, 200, 121, 0.3);
+            border-radius: 9999px;
+            background: rgba(32, 200, 121, 0.1);
+            color: var(--emerald-accent);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: capitalize;
+        }
+        .coach-role-badge[data-role="viewer"] {
+            border-color: var(--border-highlight);
+            background: var(--bg-card);
+            color: var(--text-body);
+        }
+        .education-approval-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            background: var(--bg-subcard);
+            color: var(--text-body);
+        }
+        .coach-revoke-btn { flex: 0 0 auto; }
+        .education-request-row { background: var(--bg-card); }
+
+        .ai-guidance-list > div {
+            display: grid;
+            gap: 3px;
+            padding: 12px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-subcard);
+        }
+        .ai-guidance-list b { color: var(--text-main); font-size: 13px; }
+        .ai-guidance-list span { color: var(--text-body); font-size: 13px; line-height: 1.45; }
+        .ai-response {
+            overflow-wrap: anywhere;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-subcard);
+            color: var(--text-main);
+            line-height: 1.65;
+        }
+        .ai-response[data-state="empty"] { color: var(--text-muted); }
+        .ai-response[data-state="loading"] { border-color: var(--border-highlight); }
+        .ai-response[data-state="loading"]::before {
+            content: "Generating response…";
+            display: block;
+            margin-bottom: 8px;
+            color: var(--emerald-accent);
+            font-weight: 700;
+        }
+        .ai-response[data-state="error"] { border-color: rgba(248, 113, 113, 0.55); }
+        .ai-status { min-height: 20px; color: var(--text-body); font-size: 13px; }
+        .ai-status[data-state="error"] { color: var(--danger-accent); }
+        .ai-status[data-state="success"] { color: var(--emerald-accent); }
 
         /* App Toasts */
         .app-toast {
             position: fixed; right: 18px; bottom: 18px; z-index: 999999;
             max-width: min(420px, calc(100vw - 32px));
-            padding: 11px 14px; border-radius: 8px;
-            background: #121722; color: #FFFFFF; font-size: 11px; font-weight: 800;
+            padding: 12px 16px; border-radius: 10px;
+            background: var(--bg-card); color: var(--text-main); font-size: 13px; font-weight: 700;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-            border: 1px solid #1E293B;
+            border: 1px solid var(--border-subtle);
             opacity: 0; transform: translateY(8px); pointer-events: none; transition: 0.2s ease;
         }
         .app-toast.show { opacity: 1; transform: translateY(0); }
-        .app-toast.success { border-left: 3px solid #10B981; }
+        .app-toast.success { border-left: 3px solid var(--emerald-accent); }
         .app-toast.error { border-left: 3px solid #EF4444; }
-        .app-toast.info { border-left: 3px solid #38BDF8; }
+        .app-toast.info { border-left: 3px solid var(--emerald-accent); }
 
+        @page { margin: 14mm; }
         @media print {
-            .elite-sidebar, .mobile-topbar, .dashboard-topline, button, #appErrorToast, #appToast { display: none !important; }
-            #app-interface { margin-left: 0 !important; background: white !important; color: black !important; }
-            .app-section { max-width: none !important; }
-            .report-sheet { box-shadow: none !important; border: 0 !important; background: white !important; color: black !important; }
+            body * { visibility: hidden !important; }
+            #reportPreview, #reportPreview * { visibility: visible !important; }
+            #reportPreview {
+                position: absolute !important;
+                inset: 0 auto auto 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+            }
+            #reportPreview .report-sheet {
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                background: #fff !important;
+                color: #1f2937 !important;
+            }
+            #reportPreview .report-sheet button { display: none !important; }
+            #reportPreview .report-sheet h1,
+            #reportPreview .report-sheet h2,
+            #reportPreview .report-sheet h3,
+            #reportPreview .report-sheet h4,
+            #reportPreview .report-sheet p,
+            #reportPreview .report-sheet b,
+            #reportPreview .report-sheet span,
+            #reportPreview .report-sheet td { color: #1f2937 !important; }
+            #reportPreview .report-sheet h1,
+            #reportPreview .report-sheet h3 { color: #166534 !important; }
+            #reportPreview .report-sheet .report-grid > div,
+            #reportPreview .report-sheet .report-history-entry { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+            #reportPreview .report-sheet .report-line { border-color: #cbd5e1 !important; }
         }
     
         /* Modals and Overlays */
@@ -3271,8 +3738,8 @@ if (coachLensPlayerSelect) {
             padding: 16px;
         }
         .modal-dialog {
-            background: #121722;
-            border: 1px solid #1E293B;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
             border-radius: 12px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
             max-height: 90vh;
@@ -3280,80 +3747,111 @@ if (coachLensPlayerSelect) {
         }
         .modal-header {
             padding: 16px 20px;
-            border-bottom: 1px solid #1E293B;
+            border-bottom: 1px solid var(--border-subtle);
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
 
+        #login-screen {
+            background: var(--bg-base) !important;
+        }
+        #login-screen > div {
+            background: var(--bg-card) !important;
+            border-color: var(--border-subtle) !important;
+            border-top-color: var(--emerald-accent) !important;
+            color: var(--text-body) !important;
+        }
+        #login-screen button[type="submit"],
+        #login-screen #statusAction button {
+            background: var(--emerald-dark) !important;
+            color: var(--text-main) !important;
+        }
+        #login-screen button:not([type="submit"]) {
+            background: var(--bg-subcard) !important;
+            border-color: var(--border-subtle) !important;
+            color: var(--text-body) !important;
+        }
+        [class~="bg-emerald-600"] { background-color: var(--emerald-dark) !important; }
+        [class~="hover:bg-emerald-500"]:hover {
+            background-color: var(--emerald-accent) !important;
+            color: var(--bg-base) !important;
+        }
+        #newPlayerSection [class~="bg-[#0f172a]"],
+        #newPlayerSection [class~="bg-[#080e1a]"] {
+            background: var(--bg-card) !important;
+        }
+        #newPlayerSection [class~="bg-[#1e293b]"] {
+            background: var(--bg-base) !important;
+        }
+        #newPlayerSection [class~="text-[#F97316]"] {
+            color: var(--emerald-accent) !important;
+        }
+        #newPlayerSection [class~="bg-[#F97316]"] {
+            background: var(--emerald-dark) !important;
+        }
+        #newPlayerSection [class~="hover:bg-[#EA580C]"]:hover {
+            background: var(--emerald-accent) !important;
+            color: var(--bg-base) !important;
+        }
+
+        .choice-card, .education-card { border-radius: 12px !important; }
+        .sub-card, .session-context-card, .report-grid > div { border-radius: 10px !important; }
+        .education-security-banner { border-radius: 12px; }
+        .report-sheet table { width: 100%; border-collapse: collapse; }
+
+        @media(max-width: 700px) {
+            .dashboard-topline { align-items: stretch; }
+            .coach-user { align-self: flex-end; width: min(100%, 320px); max-width: 100%; }
+            .coach-profile-copy { flex: 1 1 auto; }
+            .section-header { align-items: stretch; flex-direction: column; }
+            .section-header > div { width: 100%; }
+            .section-header .primary-btn { width: 100%; justify-content: center; }
+            .mock-hero { height: 340px; min-height: 340px; border-radius: 12px; }
+            .mock-metrics { gap: 6px; }
+            .mock-metrics div { padding: 8px 6px; }
+            .mock-metrics b { font-size: 22px; }
+            .mock-metrics small { font-size: 11px; letter-spacing: 0.04em; }
+            .player-card { align-items: flex-start; gap: 12px; padding: 14px 12px !important; }
+            .player-card > div:first-child { gap: 10px; }
+            .player-card > div:first-child > div:last-child > div { gap: 5px; }
+            .player-card > div:last-child { min-width: 82px; padding-left: 6px; }
+            .player-id-badge, .player-role-badge, .player-level-badge { min-height: 24px; padding: 3px 7px; font-size: 12px; }
+            .profile-card-header { align-items: flex-start; }
+            .profile-actions { width: 100%; }
+            .profile-actions > button { flex: 1 1 auto; }
+            .session-row { align-items: flex-start; flex-direction: column; }
+            .session-row > div:last-child { justify-content: flex-start; }
+            .choice-card { min-height: 128px; padding: 18px !important; }
+            .coach-access-row, .education-request-row { align-items: stretch; flex-direction: column; }
+            .education-approval-row { align-items: stretch; flex-direction: column; }
+            .coach-revoke-btn { width: 100%; }
+            .report-line { align-items: flex-start; flex-wrap: wrap; }
+            .report-line > :last-child { max-width: 100%; text-align: right; overflow-wrap: anywhere; }
+        }
+
+        @media(prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+            }
+        }
+
     </style>
-
-<style id="coachs-lens-modern-redesign">
-:root{
- --bg:#0b1220;--surface:#111c2e;--surface-2:#17253a;--surface-3:#1d2d45;
- --text:#f8fafc;--text-2:#cbd5e1;--muted:#94a3b8;--line:#2b3b53;
- --primary:#38bdf8;--primary-strong:#0ea5e9;--success:#22c55e;--warning:#f59e0b;
- --radius:16px;--shadow:0 12px 32px rgba(0,0,0,.22)
-}
-html,body{background:var(--bg)!important;color:var(--text)!important}
-body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.01em}
-*{box-sizing:border-box}
-header,.header,.topbar,.navbar{background:rgba(11,18,32,.92)!important;border-color:var(--line)!important;backdrop-filter:blur(14px)}
-main,.main-content,.content{background:transparent!important}
-.card,.panel,.section,.assessment-section,.modal-content,.dashboard-card,.stat-card{background:linear-gradient(145deg,var(--surface),#101a2b)!important;border:1px solid var(--line)!important;border-radius:var(--radius)!important;box-shadow:var(--shadow)!important}
-button,.btn{border-radius:11px!important;border:1px solid transparent!important;font-weight:700!important;transition:transform .18s ease,box-shadow .18s ease,background .18s ease!important}
-button:hover,.btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.2)}
-button.primary,.btn-primary,[class*="primary"]{background:var(--primary-strong)!important;color:#fff!important}
-input,select,textarea{background:var(--surface-2)!important;color:var(--text)!important;border:1px solid var(--line)!important;border-radius:10px!important;min-height:42px}
-input::placeholder,textarea::placeholder{color:var(--muted)!important}
-label,.label{color:var(--text-2)!important;font-weight:600}
-h1,h2,h3,h4,h5{color:var(--text)!important;letter-spacing:-.02em}
-p,span,td,li{color:inherit}
-small,.muted,.secondary-text{color:var(--muted)!important}
-a{color:var(--primary)!important}
-nav a,.nav-item{border-radius:10px!important;color:var(--text-2)!important}
-nav a:hover,.nav-item:hover,nav a.active,.nav-item.active{background:rgba(56,189,248,.12)!important;color:var(--primary)!important}
-table{border-color:var(--line)!important}th{background:var(--surface-2)!important;color:var(--text-2)!important}td{border-color:var(--line)!important}
-.badge,.tag,.chip{border-radius:999px!important;background:var(--surface-3)!important;color:var(--text-2)!important;border:1px solid var(--line)!important}
-.progress,.progress-bar{border-radius:999px!important}
-hr{border-color:var(--line)!important;opacity:.7}
-/* Make assessment choices clear and readable */
-.option,.option-card,.choice,.rating-option,.radio-card{background:var(--surface-2)!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--text)!important}
-.option:hover,.option-card:hover,.choice:hover,.rating-option:hover,.radio-card:hover{border-color:var(--primary)!important;background:#20334d!important}
-.option.selected,.option-card.selected,.choice.selected,.rating-option.selected,.radio-card.selected,[aria-checked="true"]{background:rgba(14,165,233,.2)!important;border-color:var(--primary)!important;color:#fff!important}
-@media(max-width:800px){.card,.panel,.section,.assessment-section{border-radius:13px!important}.container,.content{padding-left:14px!important;padding-right:14px!important}}
-</style>
-
-<style id="coachs-lens-modern-redesign">
-:root{--cl-bg:#08111f;--cl-panel:#101d31;--cl-panel2:#16263d;--cl-border:#29405d;--cl-text:#f8fafc;--cl-muted:#a8b7ca;--cl-accent:#38bdf8;--cl-accent2:#0ea5e9;--cl-success:#22c55e;--cl-warning:#f59e0b;}
-html,body{background:linear-gradient(135deg,#08111f 0%,#0d1728 55%,#101d31 100%)!important;color:var(--cl-text)!important;}
-body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important;letter-spacing:.01em;}
-header,nav,.sidebar,.topbar,.app-header{background:rgba(8,17,31,.92)!important;border-color:var(--cl-border)!important;backdrop-filter:blur(16px);}
-.card,.panel,.section,.assessment-card,.stat-card,.modal-content,.content-card{background:linear-gradient(145deg,rgba(22,38,61,.96),rgba(15,29,49,.96))!important;border:1px solid var(--cl-border)!important;border-radius:18px!important;box-shadow:0 12px 35px rgba(0,0,0,.18)!important;}
-h1,h2,h3,h4,h5,h6,.title,.section-title{color:#fff!important;font-weight:750!important;letter-spacing:-.02em;}
-p,label,span,td,th,small,.text-muted,.subtitle{color:var(--cl-muted)!important;}
-input,select,textarea{background:#0d1a2d!important;color:#f8fafc!important;border:1px solid #36506f!important;border-radius:10px!important;min-height:42px;}
-input:focus,select:focus,textarea:focus{outline:none!important;border-color:var(--cl-accent)!important;box-shadow:0 0 0 3px rgba(56,189,248,.16)!important;}
-button,.btn,.primary-btn{border-radius:10px!important;font-weight:700!important;transition:.2s ease!important;}
-button.primary,.btn-primary,.primary-btn{background:linear-gradient(135deg,var(--cl-accent),var(--cl-accent2))!important;color:#062033!important;border:0!important;box-shadow:0 8px 20px rgba(14,165,233,.22)!important;}
-button:hover,.btn:hover{transform:translateY(-1px);}
-.nav-item.active,.tab.active,.selected{background:rgba(56,189,248,.14)!important;color:#7dd3fc!important;border-color:rgba(56,189,248,.45)!important;}
-hr{border-color:var(--cl-border)!important;}
-.badge,.pill,.status-pill{border-radius:999px!important;}
-::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#08111f}::-webkit-scrollbar-thumb{background:#29405d;border-radius:999px}::-webkit-scrollbar-thumb:hover{background:#3d5d80}
-</style>
 </head>
-<body class="bg-[#0B0E14] text-slate-300 font-sans">
+<body class="bg-[#101512] text-slate-300 font-sans">
 
     <!-- LOGIN SCREEN -->
     <div id="login-screen" class="min-h-screen flex items-center justify-center bg-[#0B0E14] p-4 hidden">
-        <div class="bg-[#121722] p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800 border-t-4 border-t-emerald-500 text-slate-200">
+        <div class="bg-[#1B241F] p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800 border-t-4 border-t-emerald-500 text-slate-200">
             <div class="text-center mb-6">
                 <div class="inline-flex items-center justify-center w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-3">
                     <span class="text-emerald-400 font-black text-xl italic">L</span>
                 </div>
                 <h1 class="text-3xl font-black italic tracking-tighter text-white">COACH'S LENS</h1>
-                <p class="text-xs text-slate-400 font-bold mt-1">High-Density Pro Analytics &amp; Coach Portal</p>
+                <p class="text-xs text-slate-400 font-bold mt-1">Cricket Performance Intelligence</p>
             </div>
             <div id="loginPanel">
                 <form onsubmit="handleLogin(event)" class="space-y-4 text-left">
@@ -3393,7 +3891,7 @@ hr{border-color:var(--cl-border)!important;}
                     <div class="brand-mark">♟</div>
                     <div>
                         <div class="brand-title">COACH'S <span>LENS</span></div>
-                        <div class="brand-subtitle">ELITE</div>
+                        <div class="brand-subtitle">CRICKET PERFORMANCE</div>
                     </div>
                 </div>
                 <button onclick="closeMobileSidebar()" class="sidebar-close-btn" aria-label="Close Sidebar">✕</button>
@@ -3456,10 +3954,8 @@ hr{border-color:var(--cl-border)!important;}
                     <div class="welcome-subtitle">What would you like to focus on today?</div>
                 </div>
                 <div class="coach-user">
-                    <div class="notification-dot">5</div>
-                    <div class="avatar">C</div>
-                    <div><b>Coach</b><small>Head Coach</small></div>
-                    <span>⌄</span>
+                        <div id="coachProfileAvatar" class="avatar">C</div>
+                        <div class="coach-profile-copy"><b id="coachProfileName">Coach</b><small id="coachProfileRole">Coach</small></div>
                 </div>
             </div>
 
@@ -3530,13 +4026,13 @@ hr{border-color:var(--cl-border)!important;}
                         <p>Squad Roster, Profiles &amp; Technical Baseline</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <span id="playerCountBadge" class="text-[10px] font-black px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">0 Players</span>
+                        <span id="playerCountBadge" class="count-badge">0 Players</span>
                         <button onclick="openNewPlayerPage()" class="primary-btn flex items-center gap-1"><span>＋</span> Add Player</button>
                     </div>
                 </div>
 
                 <!-- SEARCH & FILTER TOOLBAR -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                <div class="player-filter-bar grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                     <div class="sm:col-span-1">
                         <input type="text" id="searchBox" placeholder="Search by name, Player ID (CL...), jersey..." oninput="filterPlayers()">
                     </div>
@@ -3596,15 +4092,15 @@ hr{border-color:var(--cl-border)!important;}
                 </div>
 
                 <!-- MAIN FORM CONTAINER -->
-                <div class="bg-[#0f172a] rounded-2xl border border-slate-800/90 shadow-2xl p-6 sm:p-8">
+                <div class="form-card registration-form">
                     <!-- SECTION 1: BASIC PROFILE -->
                     <div class="mb-8">
-                        <div class="text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
-                            <span>BASIC PROFILE</span>
+                        <div class="form-section-heading text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
+                            <span>PERSONAL DETAILS</span>
                             <span class="text-[10px] text-slate-400 font-medium">Fields marked with <b class="text-[#F97316]">*</b> are required</span>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div class="registration-fields grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <div>
                                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">NAME <span class="text-[#F97316]">*</span></label>
                                 <input type="text" id="np_name" placeholder="Full player name" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors" autocomplete="off">
@@ -3626,25 +4122,17 @@ hr{border-color:var(--cl-border)!important;}
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">CONTACT</label>
-                                <input type="text" id="np_contact" placeholder="Phone / contact details" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">JERSEY / SQUAD #</label>
-                                <input type="text" id="np_jersey" placeholder="e.g. 18" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
-                            </div>
                         </div>
                     </div>
 
                     <!-- SECTION 2: CRICKET PROFILE -->
                     <div class="mb-6">
-                        <div class="text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
+                        <div class="form-section-heading text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
                             <span>CRICKET PROFILE</span>
                             <span class="text-[10px] text-slate-400 font-medium">Technical Specialization</span>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div class="registration-fields grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <div>
                                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PRIMARY ROLE <span class="text-[#F97316]">*</span></label>
                                 <select id="np_role" onchange="onRoleChange('np')" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316] transition-colors">
@@ -3705,6 +4193,23 @@ hr{border-color:var(--cl-border)!important;}
                                 </select>
                             </div>
                             <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">JERSEY / SQUAD #</label>
+                                <input type="text" id="np_jersey" placeholder="e.g. 18" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <div class="form-section-heading text-xs font-black uppercase tracking-widest text-slate-200 pb-2.5 border-b border-slate-800/80 mb-5 flex items-center justify-between">
+                            <span>CONTACT &amp; COACHING NOTES</span>
+                            <span class="text-[10px] text-slate-400 font-medium">Keep player and parent contact details together</span>
+                        </div>
+                        <div class="registration-fields grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PLAYER CONTACT</label>
+                                <input type="text" id="np_contact" placeholder="Phone / contact details" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
+                            </div>
+                            <div>
                                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1.5">PARENT / EMERGENCY CONTACT</label>
                                 <input type="text" id="np_emergencyContact" placeholder="Emergency contact / parent details" class="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#F97316] transition-colors">
                             </div>
@@ -3735,9 +4240,9 @@ hr{border-color:var(--cl-border)!important;}
                 </div>
                 
                 <div class="form-card border-l-8 border-emerald-500">
-                    <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
-                        <div class="flex items-center gap-2.5"><span class="pro-tag !mb-0">Edit Player Profile</span><div class="flex items-center gap-1.5 bg-orange-950/40 border border-orange-800/60 px-2.5 py-0.5 rounded-lg"><span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">ID:</span><span id="pf_playerId_badge" class="font-mono text-xs font-black text-[#F97316] tracking-wider">CL---------</span><button type="button" onclick="copyPlayerIdBadge()" title="Copy Player ID" class="text-[10px] text-amber-400 hover:text-white underline ml-1 cursor-pointer font-bold">Copy</button></div></div>
-                        <div class="flex items-center gap-2">
+                    <div class="profile-card-header flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                        <div class="flex items-center gap-2.5 flex-wrap"><span class="pro-tag !mb-0">Edit Player Profile</span><div class="player-id-container flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg"><span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">ID:</span><span id="pf_playerId_badge" class="player-id-badge font-mono">CL---------</span><button type="button" onclick="copyPlayerIdBadge()" title="Copy Player ID" class="secondary-btn btn-mini">Copy</button></div></div>
+                        <div class="profile-actions flex items-center gap-2">
                             <button onclick="saveProfile()" class="primary-btn !py-1.5 !px-3">Save Profile</button>
                             <button onclick="confirmDeletePlayer()" class="danger-btn !py-1.5 !px-3">Delete</button>
                         </div>
@@ -3745,6 +4250,7 @@ hr{border-color:var(--cl-border)!important;}
 
                     <!-- PROFILE DETAILS GRID -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="profile-section-heading sm:col-span-2">Personal Details</div>
                         <div>
                             <label>Player Name <span class="text-emerald-400">*</span></label>
                             <input type="text" id="pf_name">
@@ -3769,6 +4275,7 @@ hr{border-color:var(--cl-border)!important;}
                             <label>Age</label>
                             <input type="number" id="pf_age" min="4" max="99">
                         </div>
+                        <div class="profile-section-heading sm:col-span-2">Cricket Profile</div>
                         <div>
                             <label>Playing Level</label>
                             <select id="pf_level">
@@ -3829,6 +4336,7 @@ hr{border-color:var(--cl-border)!important;}
                             </div>
                         </div>
 
+                        <div class="profile-section-heading sm:col-span-2">Contact &amp; Coaching Notes</div>
                         <div>
                             <label>Player Contact</label>
                             <input type="text" id="pf_contact" placeholder="Phone / Email">
@@ -3848,7 +4356,7 @@ hr{border-color:var(--cl-border)!important;}
 
                 <div class="form-card">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="pro-tag !bg-slate-700">Technical Assessment History</span>
+                        <span class="pro-tag">Technical Assessment History</span>
                         <button onclick="openNewSession()" class="primary-btn">+ New Assessment</button>
                     </div>
                     <div id="sessionsList"></div>
@@ -3879,8 +4387,8 @@ hr{border-color:var(--cl-border)!important;}
                     </button>
                 </div>
 
-                <div class="form-card">
-                    <span class="pro-tag !bg-slate-700">Session History</span>
+                <div class="form-card session-history-card">
+                    <span class="pro-tag">Session History</span>
                     <div id="coachingSessionsList"></div>
                 </div>
             </div>
@@ -3896,8 +4404,8 @@ hr{border-color:var(--cl-border)!important;}
                     <button onclick="openMatchForm()" class="primary-btn">+ Add Match</button>
                 </div>
                 <div id="matchFormWrap" class="form-card hidden"></div>
-                <div class="form-card">
-                    <span class="pro-tag !bg-orange-600">Match History</span>
+                <div class="form-card match-history-card">
+                    <span class="pro-tag">Match History</span>
                     <div id="matchesList"></div>
                 </div>
             </div>
@@ -3934,9 +4442,9 @@ hr{border-color:var(--cl-border)!important;}
         <div>
             <button onclick="showHome()" class="back-btn">← Home</button>
             <h2>COACHLENS AI</h2>
-            <p>CoachLens AI · Powered by OpenRouter</p>
+            <p>CoachLens · Coaching assistant</p>
         </div>
-        <span class="pro-tag !bg-emerald-600">LOCAL AI</span>
+        <span class="pro-tag">AI ASSISTANT</span>
     </div>
 
     <div class="grid md:grid-cols-3 gap-5">
@@ -3944,43 +4452,29 @@ hr{border-color:var(--cl-border)!important;}
         <!-- AI INFORMATION -->
         <div class="form-card">
 
-            <span class="pro-tag !bg-emerald-600">AI ENGINE</span>
+            <span class="pro-tag">COACHING SUPPORT</span>
 
             <h3 class="text-xl font-black mt-4">
                 🏏 CoachLens AI
             </h3>
 
             <p class="text-sm text-slate-500 mt-3">
-                Your local cricket coaching assistant powered by
-                CoachLens AI and OpenRouter.
+                Ask cricket coaching and performance questions. Select a player when you want the existing CoachLens AI workflow to include that player's context.
             </p>
 
-            <div class="mt-5 space-y-3 text-sm">
-
-                <div class="p-3 rounded-xl bg-emerald-50 text-emerald-800">
-                    ✓ Runs locally on your computer
+            <div class="ai-guidance-list mt-5 space-y-3 text-sm">
+                <div>
+                    <b>General questions</b>
+                    <span>Ask about coaching, training, technique, or match preparation.</span>
                 </div>
-
-                <div class="p-3 rounded-xl bg-slate-50 text-slate-700">
-                    ✓ No AI API key required
+                <div>
+                    <b>Player context</b>
+                    <span>Choose a player to include available context in the request.</span>
                 </div>
-
-                <div class="p-3 rounded-xl bg-slate-50 text-slate-700">
-                    ✓ No per-request AI cost
+                <div>
+                    <b>Existing service</b>
+                    <span>Responses use the current CoachLens AI request flow.</span>
                 </div>
-
-            </div>
-
-            <div class="mt-5 p-3 rounded-xl border border-slate-200">
-
-                <div class="text-xs font-bold uppercase text-slate-400">
-                    AI Model
-                </div>
-
-                <div class="font-bold mt-1">
-                    CoachLens AI · OpenRouter
-                </div>
-
             </div>
 
         </div>
@@ -3993,7 +4487,7 @@ hr{border-color:var(--cl-border)!important;}
                 ASK COACHLENS AI
             </span>
             <div class="mt-4">
-                <label class="block text-sm font-medium text-slate-300 mb-2">
+                <label for="coachLensPlayer" class="block text-sm font-medium text-slate-300 mb-2">
                     Select Player
                 </label>
 
@@ -4007,6 +4501,7 @@ hr{border-color:var(--cl-border)!important;}
                     </option>
                 </select>
             </div>
+            <label for="aiPrompt" class="mt-4">Your question</label>
             <textarea
                 id="aiPrompt"
                 class="w-full mt-4"
@@ -4039,14 +4534,18 @@ What technical areas should I assess and what drills should I use?"
 
             <div
                 id="aiStatus"
-                class="text-xs text-slate-400 mt-4"
+                class="ai-status mt-4"
+                aria-live="polite"
             ></div>
 
             <div
                 id="aiResponse"
-                class="mt-5 p-5 rounded-2xl bg-slate-50 border border-slate-200 min-h-[200px] whitespace-pre-wrap"
+                class="ai-response mt-5 p-5 rounded-2xl min-h-[200px] whitespace-pre-wrap"
+                data-state="empty"
+                aria-live="polite"
+                aria-busy="false"
             >
-                <span class="text-slate-400">
+                <span>
                     Your AI response will appear here.
                 </span>
             </div>
@@ -4067,15 +4566,17 @@ What technical areas should I assess and what drills should I use?"
                     </div>
                 </div>
                 <div class="grid md:grid-cols-2 gap-5">
-                    <div class="form-card">
-                        <span class="pro-tag !bg-purple-600">Player Report</span>
+                    <div class="form-card report-option-card">
+                        <span class="pro-tag">Player Report</span>
                         <p class="text-sm text-slate-500 mb-3">Select a player to view their technical profile, scores and assessment history.</p>
+                        <label for="reportPlayerSelect">Player</label>
                         <select id="reportPlayerSelect" class="mb-3"></select>
                         <button onclick="generatePlayerReport()" class="primary-btn w-full">View / Print Report</button>
                     </div>
-                    <div class="form-card">
-                        <span class="pro-tag !bg-blue-600">Session Report</span>
+                    <div class="form-card report-option-card">
+                        <span class="pro-tag">Session Report</span>
                         <p class="text-sm text-slate-500 mb-3">Generate a report from an individual or team coaching session.</p>
+                        <label for="reportSessionSelect">Session or match</label>
                         <select id="reportSessionSelect" class="mb-3"></select>
                         <button onclick="generateSessionReport()" class="primary-btn w-full">View / Print Report</button>
                     </div>
@@ -4095,9 +4596,9 @@ What technical areas should I assess and what drills should I use?"
                 </div>
 
                 <!-- SESSION INFORMATION -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-blue-600">Session Information</span>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="form-card session-stage">
+                    <span class="pro-tag">01 · SESSION INFORMATION</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div><label>Date</label><input type="date" id="cs_date"></div>
                         <div>
                             <label>Session Type</label>
@@ -4133,15 +4634,15 @@ What technical areas should I assess and what drills should I use?"
                 </div>
 
                 <!-- OBJECTIVE -->
-                <div class="form-card">
+                <div class="form-card session-stage">
                     <span class="pro-tag">1 · SESSION OBJECTIVE</span>
                     <label>What was the objective of the session?</label>
                     <textarea id="cs_objective" class="large-note" placeholder="What did you want the player/team to achieve today?"></textarea>
                 </div>
 
                 <!-- OBJECTIVE ACHIEVEMENT -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-emerald-600">2 · OBJECTIVE ACHIEVEMENT</span>
+                <div class="form-card session-stage">
+                    <span class="pro-tag">2 · OBJECTIVE ACHIEVEMENT</span>
                     <label>Was the objective achieved?</label>
                     <input type="hidden" id="cs_objectiveResult" value="">
                     <div class="achievement-grid">
@@ -4154,8 +4655,8 @@ What technical areas should I assess and what drills should I use?"
                 </div>
 
                 <!-- REVIEW / OUTCOMES -->
-                <div class="form-card">
-                    <span class="pro-tag !bg-purple-600">3 · OBSERVATIONS &amp; REVIEW</span>
+                <div class="form-card session-stage">
+                    <span class="pro-tag">3 · OBSERVATIONS &amp; REVIEW</span>
                     <div class="grid md:grid-cols-2 gap-4">
                         <div>
                             <label>What went well?</label>
@@ -4177,9 +4678,9 @@ What technical areas should I assess and what drills should I use?"
                 </div>
 
                 <!-- PLAYER DAY NOTES -->
-                <div class="form-card">
+                <div class="form-card session-stage">
                     <div class="flex justify-between items-center mb-3">
-                        <span class="pro-tag !bg-indigo-600">4 · INDIVIDUAL PLAYER NOTES</span>
+                        <span class="pro-tag">4 · INDIVIDUAL PLAYER NOTES</span>
                         <button type="button" onclick="addPlayerDayNote()" class="secondary-btn text-xs">+ Add Player Note</button>
                     </div>
                     <p id="noPlayerNotes" class="text-sm text-slate-500 py-3 text-center">No individual player notes added for this session yet. Click "+ Add Player Note" to record observations for specific players.</p>
@@ -4204,8 +4705,8 @@ What technical areas should I assess and what drills should I use?"
 
                 <!-- SESSION METADATA -->
                 <div class="form-card">
-                    <span class="pro-tag !bg-blue-600">Session Context</span>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <span class="pro-tag">Session Context</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div><label>Date</label><input type="date" id="sessionDate"></div>
                         <div>
                             <label>Session Type</label>
@@ -4228,7 +4729,7 @@ What technical areas should I assess and what drills should I use?"
 
                 <!-- COACHING INTERVENTION & SUMMARY -->
                 <div class="form-card mt-4">
-                    <span class="pro-tag !bg-amber-600">Coaching Notes &amp; Interventions</span>
+                    <span class="pro-tag">Coaching Notes &amp; Interventions</span>
                     <div class="grid md:grid-cols-2 gap-4">
                         <div>
                             <label>Baseline Observed</label>
@@ -4344,26 +4845,4 @@ What technical areas should I assess and what drills should I use?"
     <!-- TOAST NOTIFICATION -->
     <div id="appToast" class="app-toast"></div>
 </body>
-</html><style id="coachslens-visual-redesign-v2">
-body{background:radial-gradient(circle at 15% 0%,#132742 0%,#08111f 42%,#070d17 100%)!important;color:#f8fbff!important}
-#dynamicSections{gap:24px!important}
-#dynamicSections .form-card{position:relative!important;overflow:hidden!important;padding:24px!important;margin:0!important;background:linear-gradient(145deg,rgba(18,34,55,.98),rgba(12,24,40,.98))!important;border:1px solid #2b405b!important;border-top:0!important;border-radius:20px!important;box-shadow:0 18px 45px rgba(0,0,0,.2)!important}
-#dynamicSections .form-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#45bdf5,#1675b7)}
-#dynamicSections .pro-tag{display:inline-flex!important;align-items:center!important;margin:0 0 22px!important;padding:0!important;background:none!important;color:#dcecff!important;font-size:15px!important;font-weight:800!important;letter-spacing:.08em!important;text-transform:uppercase!important}
-#dynamicSections .pro-tag:before{content:"";width:8px;height:8px;border-radius:50%;background:#45bdf5;box-shadow:0 0 0 5px rgba(69,189,245,.12);margin-right:12px}
-#dynamicSections .metric-score-field{padding:16px!important;background:rgba(8,17,31,.52)!important;border:1px solid #263b56!important;border-radius:14px!important;transition:.18s!important}
-#dynamicSections .metric-score-field:hover{transform:translateY(-2px)!important;border-color:#477196!important;background:rgba(13,29,48,.85)!important}
-#dynamicSections .metric-score-field label{color:#dbe8f7!important;font-size:12px!important;font-weight:750!important;letter-spacing:.04em!important;text-transform:uppercase!important}
-#dynamicSections .metric-score-field select{margin-top:10px!important;min-height:48px!important;padding:0 14px!important;background:#0b192c!important;border:1px solid #36516f!important;border-radius:11px!important;color:#f8fbff!important;font-size:14px!important;font-weight:650!important}
-#dynamicSections .metric-score-field select:focus{border-color:#45bdf5!important;box-shadow:0 0 0 3px rgba(69,189,245,.14)!important}
-#dynamicSections .metric-score-field>div:last-of-type{margin-top:16px!important;padding-top:13px!important;border-top:1px solid #263b56!important}
-#dynamicSections .metric-score-field>div:last-of-type>span{color:#8fa8c3!important;font-size:10px!important;letter-spacing:.12em!important}
-#dynamicSections .score-pills{display:flex!important;gap:6px!important}
-#dynamicSections .score-pill-btn{width:30px!important;height:30px!important;min-width:30px!important;padding:0!important;border:1px solid #263b56!important;border-radius:9px!important;background:#172940!important;color:#b8cbe0!important;font-size:12px!important;font-weight:800!important;box-shadow:none!important}
-#dynamicSections .score-pill-btn:hover{background:#24415f!important;border-color:#5a88af!important;color:#fff!important;transform:none!important}
-#dynamicSections .score-pill-btn.active{background:linear-gradient(135deg,#38bdf8,#168bd0)!important;border-color:#68d0ff!important;color:#041321!important;box-shadow:0 5px 14px rgba(56,189,248,.22)!important}
-#dynamicSections .score-pill-btn.score-clear-btn{color:#8fa8c3!important;background:#142236!important}
-#dynamicSections .score-pill-btn.score-clear-btn.active{background:#26384d!important;color:#e4eef9!important;border-color:#55718e!important;box-shadow:none!important}
-#dynamicSections .score-badge{color:#829ab3!important;font-size:11px!important;font-weight:800!important;padding:4px 7px!important;border-radius:7px!important;background:#142236!important}
-#dynamicSections .score-badge.has-score{color:#8edcff!important;background:rgba(56,189,248,.12)!important}
-</style>
+</html>
