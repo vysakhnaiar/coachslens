@@ -262,8 +262,8 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             }
             wrap.innerHTML = `
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                    <b>Access:</b> All approved coaches
-                    <div class="text-xs mt-1 text-emerald-700">No coach selection is required. Approved coaches will automatically have access after approval.</div>
+                    <b>Access:</b> Available to all logged-in users.
+                    <div class="text-xs mt-1 text-emerald-700">No coach selection is required. Approved materials are available to every authenticated user.</div>
                 </div>`;
         }
 
@@ -274,21 +274,20 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
             const uploadBtn = document.getElementById('educationUploadBtn');
             if (!list) return;
             if (uploadBtn) uploadBtn.classList.toggle('hidden', !canUploadEducation());
+            if (!auth.currentUser) {
+                educationMaterialsCache = [];
+                list.innerHTML = '<div class="form-card text-center text-xs text-slate-500">Log in to view approved study materials.</div>';
+                return;
+            }
             list.innerHTML = '<div class="form-card text-center text-xs text-slate-500">Loading secure study materials…</div>';
             try {
-                let snap;
-                if (canManageEducation()) {
-                    snap = await getDocs(collection(db, 'educationMaterials'));
-                } else {
-                    const q = query(
-                        collection(db, 'educationMaterials'),
-                        where('status', '==', 'approved'),
-                        where('allowedCoachIds', 'array-contains', auth.currentUser.uid)
-                    );
-                    snap = await getDocs(q);
-                }
+                const q = query(
+                    collection(db, 'educationMaterials'),
+                    where('status', '==', 'approved')
+                );
+                const snap = await getDocs(q);
                 educationMaterialsCache = snap.docs.map(d => ({ id:d.id, ...d.data() }))
-                    .filter(m => m.status !== 'pending' && m.status !== 'rejected')
+                    .filter(m => m.status === 'approved')
                     .sort((a,b) => String(b.createdAt?.seconds || 0).localeCompare(String(a.createdAt?.seconds || 0)));
                 filterEducationMaterials();
             } catch (err) {
@@ -308,14 +307,14 @@ const coachLensAI = httpsCallable(functions, "coachLensAI");
                 return (!search || hay.includes(search)) && (!category || m.category === category);
             });
             if (!filtered.length) {
-                list.innerHTML = '<div class="form-card text-center text-xs text-slate-500 md:col-span-2 xl:col-span-3">No authorised study materials found.</div>';
+                list.innerHTML = '<div class="form-card text-center text-xs text-slate-500 md:col-span-2 xl:col-span-3">No approved study materials found.</div>';
                 return;
             }
             list.innerHTML = filtered.map(m => `
                 <article class="education-card">
-                    <div class="education-card-top"><span class="pro-tag">${escapeHtml(m.category || 'Education')}</span><span class="education-lock">🔒 PRIVATE</span></div>
+                    <div class="education-card-top"><span class="pro-tag">${escapeHtml(m.category || 'Education')}</span><span class="education-lock">Available to all logged-in users</span></div>
                     <h3>${escapeHtml(m.title || 'Study Material')}</h3>
-                    <p>${escapeHtml(m.description || 'Private coaching study material.')}</p>
+                    <p>${escapeHtml(m.description || 'Approved coaching study material.')}</p>
                     <div class="flex flex-wrap gap-1 mt-2">${(Array.isArray(m.tags) ? m.tags : []).slice(0,8).map(t => `<span class="edu-tag">${escapeHtml(t)}</span>`).join('')}</div>
                     <div class="education-meta"><span>${escapeHtml(m.level || 'General')}</span><span>${escapeHtml(m.author || 'Coach’s Lens')}</span></div>
                     <div class="flex gap-2 mt-4">
@@ -4423,7 +4422,7 @@ if (coachLensPlayerSelect) {
 
                 <div class="education-security-banner">
                     <div class="education-shield">🔒</div>
-                    <div><b>Private education library</b><span>Only authorised coaches can access these materials. PDFs are stored outside the public website and access is enforced by Firebase Authentication + Storage/Firestore security rules.</span></div>
+                    <div><b>Available to all logged-in users.</b><span>Approved PDFs are available to authenticated users only. Access is enforced by Firebase Authentication and Storage/Firestore security rules.</span></div>
                 </div>
 
                 <div class="education-toolbar form-card">
