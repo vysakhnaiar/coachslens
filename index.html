@@ -1498,6 +1498,7 @@ if (coachLensPlayerSelect) {
             openSection('playerDetail');
             await loadSessions(playerId);
             await loadPlayerDayNotes(playerId);
+            await loadPlayerTechnicalNotes(playerId);
         };
 
         window.saveProfile = async () => {
@@ -1535,7 +1536,7 @@ if (coachLensPlayerSelect) {
         };
 
         window.confirmDeletePlayer = async () => {
-            if (!confirm(`Delete ${currentPlayer.name} and ALL their session history? This cannot be undone.`)) return;
+            if (!confirm(`Delete ${currentPlayer.name} and ALL their session and technical note history? This cannot be undone.`)) return;
             try {
                 requireSignedIn();
                 const batch = writeBatch(db);
@@ -1543,6 +1544,8 @@ if (coachLensPlayerSelect) {
                 snap.docs.forEach(d => batch.delete(d.ref));
                 const notes = await getDocs(collection(db, 'players', currentPlayer.id, 'dayNotes'));
                 notes.docs.forEach(d => batch.delete(d.ref));
+                const technicalNotes = await getDocs(collection(db, 'players', currentPlayer.id, 'technicalNotes'));
+                technicalNotes.docs.forEach(d => batch.delete(d.ref));
                 const matches = await getDocs(query(collection(db, 'matches'), where('coachId','==',auth.currentUser.uid)));
                 matches.docs.filter(d => d.data().playerId === currentPlayer.id).forEach(d => batch.delete(d.ref));
                 batch.delete(doc(db, 'players', currentPlayer.id));
@@ -2002,6 +2005,102 @@ if (coachLensPlayerSelect) {
                 el.innerHTML='<div class="empty-note error-state">Unable to load day notes. Please try again.</div>';
             }
         }
+
+        async function loadPlayerTechnicalNotes(playerId) {
+            const el = document.getElementById('playerTechnicalNotesProfile');
+            if (!el) return;
+            el.innerHTML = '<div class="form-card"><p class="text-sm text-slate-400">Loading technical notes...</p></div>';
+            try {
+                const snap = await getDocs(collection(db, 'players', playerId, 'technicalNotes'));
+                const notes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                notes.sort((a, b) => (b.date || '').localeCompare(a.date || '')
+                    || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+                el.innerHTML = `
+                    <div class="form-card">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="pro-tag">PREVIOUS TECHNICAL NOTES</span>
+                            <span class="text-xs font-bold text-slate-400">${notes.length} note${notes.length === 1 ? '' : 's'}</span>
+                        </div>
+                        ${notes.length ? notes.map(note => `
+                            <article class="technical-note-entry">
+                                <h4>${escapeHtml(formatDateDisplay(note.date))}</h4>
+                                <div><b>Observations</b><p>${escapeHtml(note.observations || '')}</p></div>
+                                <div><b>Technical Suggestions</b><p>${escapeHtml(note.suggestions || '')}</p></div>
+                                ${note.coachName || note.coachEmail ? `<small>Recorded by ${escapeHtml(note.coachName || note.coachEmail)}${note.coachName && note.coachEmail ? ` · ${escapeHtml(note.coachEmail)}` : ''}</small>` : ''}
+                            </article>`).join('') : '<p class="text-sm text-slate-400 italic">No technical notes recorded yet.</p>'}
+                    </div>`;
+            } catch (error) {
+                console.error('Unable to load player technical notes:', error);
+                el.innerHTML = '<div class="empty-note error-state">Unable to load technical notes. Please try again.</div>';
+            }
+        }
+
+        window.openTechnicalNoteForm = () => {
+            if (!currentPlayer?.id) {
+                notify('Select a player before adding a technical note.');
+                return;
+            }
+            const form = document.getElementById('technicalNoteForm');
+            form.reset();
+            document.getElementById('technicalNoteDate').value = todayISO();
+            const modal = document.getElementById('technicalNoteModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('technicalNoteObservations').focus();
+        };
+
+        window.closeTechnicalNoteForm = () => {
+            const modal = document.getElementById('technicalNoteModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        };
+
+        window.saveTechnicalNote = async (event) => {
+            event.preventDefault();
+            const user = auth.currentUser;
+            const player = currentPlayer;
+            const saveButton = document.getElementById('saveTechnicalNoteBtn');
+            if (!user) {
+                notify('You are not signed in. Please sign in again.');
+                return;
+            }
+            if (!player?.id || player.coachId !== user.uid) {
+                notify('You do not have access to add notes to this player.');
+                return;
+            }
+
+            const date = document.getElementById('technicalNoteDate').value;
+            const observations = document.getElementById('technicalNoteObservations').value.trim();
+            const suggestions = document.getElementById('technicalNoteSuggestions').value.trim();
+            if (!date || !observations || !suggestions) {
+                notify('Date, observations, and technical suggestions are required.');
+                return;
+            }
+
+            const originalText = saveButton.textContent;
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+            try {
+                await addDoc(collection(db, 'players', player.id, 'technicalNotes'), {
+                    date,
+                    observations,
+                    suggestions,
+                    coachId: user.uid,
+                    coachName: user.displayName || currentUserProfile?.name || '',
+                    coachEmail: user.email || '',
+                    createdAt: serverTimestamp(),
+                });
+                closeTechnicalNoteForm();
+                await loadPlayerTechnicalNotes(player.id);
+                notify('Technical note saved successfully.');
+            } catch (error) {
+                console.error('Unable to save player technical note:', error);
+                notify('Could not save technical note: ' + (error.message || error));
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = originalText;
+            }
+        };
 
         function calculateAssessmentScores(session) {
             let total=0,count=0,items=[];
@@ -2736,6 +2835,11 @@ if (coachLensPlayerSelect) {
         .day-note-profile small { font-size: 11px; color: var(--emerald-accent); font-weight: 700; }
         .day-note-category { color: var(--emerald-accent); font-size: 11px; font-weight: 700; }
         .player-note-label { color: var(--emerald-accent); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        .technical-note-entry { padding: 12px 2px; border-bottom: 1px solid var(--border-subtle); }
+        .technical-note-entry h4 { margin: 0 0 8px; color: var(--emerald-accent); font-size: 13px; font-weight: 800; }
+        .technical-note-entry b { color: var(--text-main); font-size: 12px; }
+        .technical-note-entry p { margin: 3px 0 10px; color: var(--text-body); font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+        .technical-note-entry small { color: var(--text-muted); font-size: 11px; }
 
         @media(max-width: 600px){ .achievement-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .day-note { min-height: 140px; } }
 
@@ -4372,7 +4476,10 @@ if (coachLensPlayerSelect) {
             <div id="playerDetailSection" class="app-section hidden">
                 <div class="flex items-center justify-between mb-4">
                     <button onclick="openSection('players')" class="back-btn">← Back to Player Database</button>
-                    <button onclick="openNewSession()" class="primary-btn text-xs">+ Conduct Assessment</button>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="openTechnicalNoteForm()" class="secondary-btn text-xs">+ Add Technical Note</button>
+                        <button onclick="openNewSession()" class="primary-btn text-xs">+ Conduct Assessment</button>
+                    </div>
                 </div>
                 
                 <div class="form-card border-l-8 border-emerald-500">
@@ -4488,6 +4595,7 @@ if (coachLensPlayerSelect) {
                     </div>
                 </div>
                 <div id="playerSnapshot" class="mb-5"></div>
+                <div id="playerTechnicalNotesProfile" class="mb-5"></div>
                 <div id="playerDayNotesProfile" class="mb-5"></div>
 
                 <div class="form-card">
@@ -4897,6 +5005,34 @@ What technical areas should I assess and what drills should I use?"
                 <div class="flex gap-3 mt-6">
                     <button type="button" onclick="saveSession()" class="primary-btn !bg-emerald-600">Save Assessment</button>
                     <button type="button" onclick="cancelSessionForm()" class="secondary-btn">Cancel</button>
+                </div>
+            </div>
+
+            <!-- TECHNICAL NOTE MODAL -->
+            <div id="technicalNoteModal" class="modal-backdrop hidden">
+                <div class="modal-dialog max-w-2xl w-full">
+                    <div class="modal-header flex justify-between items-center">
+                        <h3 class="text-lg font-bold text-white">Add Technical Note</h3>
+                        <button type="button" onclick="closeTechnicalNoteForm()" aria-label="Close technical note form" class="text-slate-400 hover:text-white text-xl font-bold">✕</button>
+                    </div>
+                    <form id="technicalNoteForm" onsubmit="saveTechnicalNote(event)" class="space-y-4 p-5">
+                        <div>
+                            <label for="technicalNoteDate">Date</label>
+                            <input type="date" id="technicalNoteDate" required>
+                        </div>
+                        <div>
+                            <label for="technicalNoteObservations">Observations</label>
+                            <textarea id="technicalNoteObservations" rows="4" required placeholder="Record observed technical strengths, challenges, or changes..."></textarea>
+                        </div>
+                        <div>
+                            <label for="technicalNoteSuggestions">Technical Suggestions</label>
+                            <textarea id="technicalNoteSuggestions" rows="4" required placeholder="Record coaching feedback, drills, or next steps..."></textarea>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                            <button type="button" onclick="closeTechnicalNoteForm()" class="secondary-btn">Cancel</button>
+                            <button type="submit" id="saveTechnicalNoteBtn" class="primary-btn">Save Technical Note</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 

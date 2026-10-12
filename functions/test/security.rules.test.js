@@ -1,4 +1,5 @@
 const { after, afterEach, before, test } = require("node:test");
+const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const {
@@ -222,6 +223,39 @@ test("player, session, note, and match data stay with the owning coach", async (
     date: "2026-10-11",
     coachId: "coach-a",
   }));
+  const technicalNoteRef = doc(playerRef, "technicalNotes", "technical-note-a");
+  await assertSucceeds(setDoc(technicalNoteRef, {
+    date: "2026-10-12",
+    observations: "Recorded observation",
+    suggestions: "Suggested drill",
+    coachId: "coach-a",
+    coachName: "Coach A",
+    coachEmail: "coach-a@example.test",
+    createdAt: serverTimestamp(),
+  }));
+  const savedTechnicalNote = await getDoc(technicalNoteRef);
+  assert.equal(savedTechnicalNote.data().observations, "Recorded observation");
+  assert.equal(savedTechnicalNote.data().suggestions, "Suggested drill");
+  assert.equal(savedTechnicalNote.data().coachId, "coach-a");
+  assert.ok(savedTechnicalNote.data().createdAt);
+  assert.equal(
+    (await getDocs(collection(ownerDb, "players", "player-a", "technicalNotes"))).size,
+    1,
+  );
+  await assertFails(getDoc(doc(otherDb, "players", "player-a", "technicalNotes", "technical-note-a")));
+  await assertFails(setDoc(doc(otherDb, "players", "player-a", "technicalNotes", "foreign-note"), {
+    date: "2026-10-12",
+    observations: "Unauthorized",
+    suggestions: "Unauthorized",
+    coachId: "coach-b",
+  }));
+  await assertFails(getDoc(doc(
+    testEnv.unauthenticatedContext().firestore(),
+    "players",
+    "player-a",
+    "technicalNotes",
+    "technical-note-a",
+  )));
   await assertFails(getDoc(doc(otherDb, "players", "player-a", "sessions", "session-a")));
   await assertFails(setDoc(doc(otherDb, "matches", "match-a"), {
     coachId: "coach-a",
