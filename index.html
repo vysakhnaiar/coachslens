@@ -596,7 +596,9 @@ async function testCoachLensAI() {
             throw new Error(result.data.error || 'AI request failed');
         }
 
-        responseEl.textContent = result.data.answer || 'No response received.';
+        responseEl.innerHTML = renderCoachLensMarkdown(
+            result.data.answer || 'No response received.'
+        );
         responseEl.dataset.state = 'success';
 
         if (selectedPlayer) {
@@ -644,6 +646,101 @@ window.clearCoachLensAI = () => {
     status.textContent = '';
     delete status.dataset.state;
 };       
+function renderCoachLensMarkdown(markdown) {
+    const escapeInline = value => String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const inline = value => escapeInline(value)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    const lines = String(markdown == null ? '' : markdown)
+        .replace(/\r\n?/g, '\n')
+        .split('\n');
+    const isTableRow = line => line.includes('|');
+    const cells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '')
+        .split('|').map(cell => cell.trim());
+    const isTableSeparator = line => {
+        const columns = cells(line);
+        return isTableRow(line) && columns.length > 0
+            && columns.every(column => /^:?-{3,}:?$/.test(column));
+    };
+    const output = [];
+
+    for (let index = 0; index < lines.length;) {
+        const line = lines[index].trim();
+        if (!line) {
+            index += 1;
+            continue;
+        }
+
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+            const level = Math.min(heading[1].length + 2, 6);
+            output.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+            index += 1;
+            continue;
+        }
+
+        if (index + 1 < lines.length && isTableRow(line)
+            && isTableSeparator(lines[index + 1])) {
+            const headers = cells(line);
+            output.push('<div class="ai-response-table-wrap"><table><thead><tr>');
+            output.push(headers.map(cell => `<th>${inline(cell)}</th>`).join(''));
+            output.push('</tr></thead><tbody>');
+            index += 2;
+            while (index < lines.length && isTableRow(lines[index].trim())) {
+                const row = cells(lines[index]);
+                output.push('<tr>');
+                headers.forEach((_, column) => {
+                    output.push(`<td>${inline(row[column] || '')}</td>`);
+                });
+                output.push('</tr>');
+                index += 1;
+            }
+            output.push('</tbody></table></div>');
+            continue;
+        }
+
+        const unordered = line.match(/^[-*+]\s+(.+)$/);
+        const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+        if (unordered || ordered) {
+            const isOrdered = Boolean(ordered);
+            const tag = isOrdered ? 'ol' : 'ul';
+            output.push(`<${tag}>`);
+            while (index < lines.length) {
+                const itemLine = lines[index].trim();
+                const item = isOrdered
+                    ? itemLine.match(/^\d+[.)]\s+(.+)$/)
+                    : itemLine.match(/^[-*+]\s+(.+)$/);
+                if (!item) break;
+                output.push(`<li>${inline(item[1])}</li>`);
+                index += 1;
+            }
+            output.push(`</${tag}>`);
+            continue;
+        }
+
+        const paragraph = [line];
+        index += 1;
+        while (index < lines.length && lines[index].trim()
+            && !/^#{1,6}\s+/.test(lines[index].trim())
+            && !/^[-*+]\s+/.test(lines[index].trim())
+            && !/^\d+[.)]\s+/.test(lines[index].trim())
+            && !(index + 1 < lines.length && isTableRow(lines[index].trim())
+                && isTableSeparator(lines[index + 1]))) {
+            paragraph.push(lines[index].trim());
+            index += 1;
+        }
+        output.push(`<p>${inline(paragraph.join(' '))}</p>`);
+    }
+
+    return output.join('');
+}
+
 function escapeHtml(str) {
             return String(str == null ? '' : str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         }
@@ -3679,6 +3776,27 @@ if (coachLensPlayerSelect) {
             color: var(--text-main);
             line-height: 1.65;
         }
+        .ai-response h3, .ai-response h4, .ai-response h5, .ai-response h6 {
+            margin: 1em 0 0.4em;
+            color: var(--text-main);
+            font-weight: 800;
+        }
+        .ai-response h3:first-child, .ai-response p:first-child { margin-top: 0; }
+        .ai-response p { margin: 0.5em 0; }
+        .ai-response ul, .ai-response ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .ai-response ul { list-style: disc; }
+        .ai-response ol { list-style: decimal; }
+        .ai-response li { margin: 0.2em 0; }
+        .ai-response-table-wrap { max-width: 100%; margin: 0.75em 0; overflow-x: auto; }
+        .ai-response table { width: 100%; border-collapse: collapse; }
+        .ai-response th, .ai-response td {
+            padding: 0.5em 0.65em;
+            border: 1px solid var(--border-subtle);
+            text-align: left;
+            vertical-align: top;
+        }
+        .ai-response th { color: var(--text-main); background: var(--bg-card); font-weight: 700; }
+        .ai-response code { padding: 0.1em 0.3em; border-radius: 4px; background: var(--bg-card); }
         .ai-response[data-state="empty"] { color: var(--text-muted); }
         .ai-response[data-state="loading"] { border-color: var(--border-highlight); }
         .ai-response[data-state="loading"]::before {

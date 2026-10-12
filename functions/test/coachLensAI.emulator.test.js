@@ -168,8 +168,19 @@ test("callable builds real player context and deduplicates overlapping dated and
   const requestBodies = [];
   const result = await invokeWithStubbedCerebras(coachId, playerId, requestBodies);
   const context = playerContextFrom(requestBodies[0]);
+  const responseGuidance = requestBodies[0].messages[0].content;
 
   assert.equal(result.answer, "Controlled emulator response.");
+  assert.match(responseGuidance, /Observations and Suggestions/);
+  assert.match(responseGuidance, /recorded strengths, weaknesses, and changes/);
+  assert.match(responseGuidance, /Never invent player scores, assessment findings, dates, or progress/);
+  assert.match(responseGuidance, /measurable indicators for the next assessment/);
+  assert.match(
+    requestBodies[0].messages.find(message =>
+      message.content.startsWith("SELECTED PLAYER CONTEXT."),
+    ).content,
+    /"technicalAssessments":\{"status":"available"/,
+  );
   assert.equal(context.technicalAssessments.status, "available");
   assert.deepEqual(
     context.technicalAssessments.records.map(record => record.source),
