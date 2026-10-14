@@ -1609,7 +1609,11 @@ if (coachLensPlayerSelect) {
 
         window.quickDownload = (sessionId) => {
             const s = sessionsCache.find(x => x.id === sessionId);
-            if (s) downloadPDF(currentPlayer, s);
+            if (!s) return;
+            downloadPDF(currentPlayer, s).catch(err => {
+                console.error('PDF download failed:', err);
+                notify('PDF download failed. Please try again.', 'error');
+            });
         };
 
         window.confirmDeleteSession = async (sessionId) => {
@@ -1851,10 +1855,15 @@ if (coachLensPlayerSelect) {
             }
         };
 
-        window.downloadCurrentFormPDF = () => {
+        window.downloadCurrentFormPDF = async () => {
             const data = readFormData();
             data.role = currentPlayer.role;
-            downloadPDF(currentPlayer, data);
+            try {
+                await downloadPDF(currentPlayer, data);
+            } catch (err) {
+                console.error('PDF download failed:', err);
+                notify('PDF download failed. Please try again.', 'error');
+            }
         };
 
         // ============================================================
@@ -1891,8 +1900,8 @@ if (coachLensPlayerSelect) {
 
             let html = `<div style="font-family: Arial, sans-serif; padding: 40px; color: #1e293b;">
                 <div style="display: flex; justify-content: space-between; border-bottom: 5px solid #065f46; padding-bottom: 10px; margin-bottom: 20px;">
-                    <div>
-                        <h1 style="margin:0; color:#065f46; font-size:32px; font-weight:900; line-height:1;">COACH'S LENS</h1>
+                    <div class="report-pdf-brand">
+                        <div class="report-brand-header">${reportLogoHTML()}<h1 style="margin:0; color:#065f46; font-size:32px; font-weight:900; line-height:1;">COACH'S LENS</h1></div>
                         <p style="margin:0; font-size:10px; font-weight:bold; color:#64748b; text-transform:uppercase; letter-spacing:2px;">Elite Player Performance Analysis</p>
                     </div>
                     <div style="text-align:right;">
@@ -1925,7 +1934,30 @@ if (coachLensPlayerSelect) {
             return html;
         }
 
-        function downloadPDF(player, session) {
+        function reportLogoHTML() {
+            return '<img class="coachlens-report-logo" src="assets/kdca-logo.jpeg" alt="KDCA logo" onerror="this.hidden=true">';
+        }
+
+        function waitForReportLogos(container) {
+            const logos = Array.from(container.querySelectorAll('.coachlens-report-logo'));
+            return Promise.all(logos.map(image => new Promise(resolve => {
+                const settle = () => {
+                    if (!image.naturalWidth) {
+                        image.hidden = true;
+                        image.removeAttribute('src');
+                    }
+                    resolve();
+                };
+                if (image.complete) {
+                    settle();
+                    return;
+                }
+                image.addEventListener('load', settle, { once: true });
+                image.addEventListener('error', settle, { once: true });
+            })));
+        }
+
+        async function downloadPDF(player, session) {
             const pdfContainer = document.createElement('div');
             pdfContainer.style.width = "800px";
             pdfContainer.style.background = "white";
@@ -1943,7 +1975,8 @@ if (coachLensPlayerSelect) {
                 pagebreak: { mode: 'css' }
             };
 
-            html2pdf().set(opt).from(pdfContainer).save();
+            await waitForReportLogos(pdfContainer);
+            return html2pdf().set(opt).from(pdfContainer).save();
         }
 
         // ============================================================
@@ -2599,7 +2632,7 @@ if (coachLensPlayerSelect) {
                     </section>`;
                 }).join('') : '<div class="empty-note">No assessment history is available for this player yet.</div>';
                 preview.innerHTML=`<div class="form-card report-sheet">
-                    <h1>COACH'S LENS</h1>
+                    <div class="report-brand-header">${reportLogoHTML()}<h1>COACH'S LENS</h1></div>
                     <h2>${escapeHtml(p.name || 'Unnamed player')}</h2>
                     <p class="report-subtitle">Player profile and recorded assessment history</p>
                     <div class="report-grid">
@@ -2640,7 +2673,7 @@ if (coachLensPlayerSelect) {
                     : null;
                 const playerName = p ? p.name : (s.playerId ? 'Player' : 'Team session');
                 document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet">
-                    <h1>COACH'S LENS</h1>
+                    <div class="report-brand-header">${reportLogoHTML()}<h1>COACH'S LENS</h1></div>
                     <h2>Match Report</h2>
                     <p class="report-subtitle">${reportValue(formatDateDisplay(s.date))} · ${reportValue(s.name || 'Match')} · ${reportValue(playerName)}</p>
                     <div class="report-grid">
@@ -2675,7 +2708,7 @@ if (coachLensPlayerSelect) {
                 }).join('')
                 : '<p class="report-missing">No individual player notes recorded.</p>';
             document.getElementById('reportPreview').innerHTML=`<div class="form-card report-sheet">
-                <h1>COACH'S LENS</h1>
+                <div class="report-brand-header">${reportLogoHTML()}<h1>COACH'S LENS</h1></div>
                 <h2>${reportValue(s.type || 'Coaching Session')}</h2>
                 <p class="report-subtitle">${reportValue(formatDateDisplay(s.date))} · ${reportValue(s.category)} · ${reportValue(p ? p.name : (s.playerId ? 'Player' : 'Team session'))}</p>
                 <div class="report-grid">
@@ -2871,6 +2904,8 @@ if (coachLensPlayerSelect) {
         .welcome-title { color: var(--text-main) !important; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
         .welcome-subtitle { color: var(--text-body) !important; font-size: 14px; font-weight: 500; }
         .welcome-title span { color: var(--emerald-accent) !important; }
+        .dashboard-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .dashboard-logo { width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto; }
         .coach-user {
             display: flex;
             align-items: center;
@@ -3188,6 +3223,7 @@ if (coachLensPlayerSelect) {
             transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .brand-block { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 2px 16px; }
+        .brand-logo { width: 42px; height: 42px; object-fit: contain; flex: 0 0 auto; }
         .brand-mark {
             width: 36px; height: 36px;
             border: 1px solid var(--emerald-accent);
@@ -3731,6 +3767,17 @@ if (coachLensPlayerSelect) {
             color: var(--text-body) !important;
         }
         .report-sheet h1 { font-size: 20px; font-weight: 900; color: var(--emerald-accent) !important; letter-spacing: -0.02em; }
+        .report-brand-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 6px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .coachlens-report-logo { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
+        .report-pdf-brand .coachlens-report-logo { width: 54px; height: 54px; }
+        .report-pdf-brand .report-brand-header { margin-bottom: 4px; }
         .report-sheet h2 { font-size: 22px; font-weight: 900; color: var(--text-main) !important; margin-top: 8px; }
         .report-sheet h3 {
             font-size: 11px; font-weight: 900; text-transform: uppercase;
@@ -4088,7 +4135,7 @@ if (coachLensPlayerSelect) {
         <div class="bg-[#1B241F] p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800 border-t-4 border-t-emerald-500 text-slate-200">
             <div class="text-center mb-6">
                 <div class="inline-flex items-center justify-center w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-3">
-                    <span class="text-emerald-400 font-black text-xl italic">L</span>
+                    <img src="assets/kdca-logo.jpeg" class="w-10 h-10 object-contain" alt="KDCA logo" onerror="this.hidden=true">
                 </div>
                 <h1 class="text-3xl font-black italic tracking-tighter text-white">COACH'S LENS</h1>
                 <p class="text-xs text-slate-400 font-bold mt-1">Cricket Performance Intelligence</p>
@@ -4128,7 +4175,7 @@ if (coachLensPlayerSelect) {
         <aside id="eliteSidebar" class="elite-sidebar">
             <div class="brand-block">
                 <div class="flex items-center gap-2.5">
-                    <div class="brand-mark">♟</div>
+                    <img src="assets/kdca-logo.jpeg" class="brand-logo" alt="KDCA logo" onerror="this.hidden=true">
                     <div>
                         <div class="brand-title">COACH'S <span>LENS</span></div>
                         <div class="brand-subtitle">CRICKET PERFORMANCE</div>
@@ -4189,9 +4236,12 @@ if (coachLensPlayerSelect) {
         <div class="max-w-[1100px] mx-auto p-5 md:p-7">
 
             <div class="dashboard-topline">
-                <div>
+                <div class="dashboard-brand">
+                    <img src="assets/kdca-logo.jpeg" class="dashboard-logo" alt="KDCA logo" onerror="this.hidden=true">
+                    <div>
                     <div class="welcome-title">Welcome back, <span>Coach!</span> 👋</div>
                     <div class="welcome-subtitle">What would you like to focus on today?</div>
+                    </div>
                 </div>
                 <div class="coach-user">
                         <div id="coachProfileAvatar" class="avatar">C</div>
